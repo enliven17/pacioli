@@ -179,9 +179,13 @@ Live on Sepolia: [Pacioli](https://sepolia.etherscan.io/address/0xf850739833d8bd
 | --- | --- |
 | ![Landing page](docs/landing.png) | ![Demo](docs/demo.png) |
 
-| The ledger, after two charges, a refund and close | Brand kit |
+| The ledger, posting a scripted tab | Brand kit |
 | --- | --- |
 | ![Interactive ledger](docs/ledger.png) | ![Brand kit](docs/brand.png) |
+
+The docs page draws the protocol as animated diagrams: the life of a tab, the three funding paths, the ledger postings and metered receipts.
+
+![Animated sequence diagram in the docs](docs/docs.png)
 
 ```sh
 anvil                      # local chain, in another terminal

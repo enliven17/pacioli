@@ -45,6 +45,32 @@ export function Payer({ session, onSigned }: { session: Session; onSigned: (code
   const window = /^\d+$/.test(minutes) && Number(minutes) > 0 ? BigInt(minutes) * 60n : undefined;
   const ready = account && isAddress(merchant) && value && window;
 
+  const short = (a: string) => (isAddress(a) ? `${a.slice(0, 6)}…${a.slice(-4)}` : "—");
+  const terms = [
+    `  merchant   ${short(merchant)}`,
+    `  limit      ${limit || "—"} ${SYMBOL}`,
+    `  openBy     now + 15 min`,
+    `  captureBy  now + ${minutes || "—"} min`,
+    `  metered    ${metered ? "yes, receipts only" : "no"}`,
+  ].join("\n");
+  const preview =
+    funding === "erc3009"
+      ? `ReceiveWithAuthorization  (Demo Dollar)
+  to         Pacioli
+  value      ${limit || "—"} ${SYMBOL}
+  nonce      the tab id, the digest of:
+
+Authorization
+${terms}`
+      : funding === "permit2"
+        ? `PermitWitnessTransferFrom  (Permit2)
+  spender    Pacioli
+  amount     ${limit || "—"} ${SYMBOL}
+  witness    Authorization
+${terms}`
+        : `Authorization  (Pacioli)
+${terms}`;
+
   const mint = () =>
     run(`Minting 100 ${SYMBOL}`, () =>
       send(account!, { address: token, abi: tokenAbi, functionName: "mint", args: [account, amount("100")] }),
@@ -153,6 +179,11 @@ export function Payer({ session, onSigned }: { session: Session; onSigned: (code
           <b>Metered</b> The merchant can only charge totals you sign as receipts.
         </span>
       </label>
+
+      <details className="preview">
+        <summary>What your wallet will ask you to sign</summary>
+        <pre>{preview}</pre>
+      </details>
 
       <button className="wide" disabled={!ready || busy} onClick={sign}>
         {funding === "erc3009" ? "Sign" : "Approve and sign"}

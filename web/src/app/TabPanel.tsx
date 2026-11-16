@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { numberToHex, type Address, type Hex } from "viem";
+import { txUrl } from "../wallet.ts";
 import type { Session } from "./App.tsx";
 import { decodeReceipt, encodeReceipt, pacioliAbi, receiptData, tokenAbi } from "../pacioli.ts";
 import { amount, chain, clock, money, pacioli, reader, send, short, signTypedData, SYMBOL, token } from "../wallet.ts";
@@ -15,6 +16,50 @@ type Tab = {
   released: bigint;
   refunded: bigint;
 };
+
+type Event = { name: string; amount: bigint; hash: Hex; block: bigint };
+
+const LABELS: Record<string, string> = {
+  Opened: "Opened",
+  Charged: "Charged",
+  Released: "Released to payer",
+  Refunded: "Refunded",
+};
+
+/** The tab's history from chain logs, newest first. Public RPCs cap log ranges, so this looks back a bounded window. */
+async function history(id: bigint): Promise<Event[]> {
+  const latest = await reader.getBlockNumber();
+  const fromBlock = latest > 9_500n ? latest - 9_500n : 0n;
+  const logs = await reader.getContractEvents({ address: pacioli, abi: pacioliAbi, args: { id } as never, fromBlock });
+  return logs
+    .map((log) => {
+      const args = log.args as { limit?: bigint; amount?: bigint };
+      return {
+        name: log.eventName as string,
+        amount: args.limit ?? args.amount ?? 0n,
+        hash: log.transactionHash as Hex,
+        block: log.blockNumber as bigint,
+      };
+    })
+    .reverse();
+}
+
+function useNow() {
+  const [now, setNow] = useState(() => Math.floor(Date.now() / 1000));
+  useEffect(() => {
+    const t = setInterval(() => setNow(Math.floor(Date.now() / 1000)), 1000);
+    return () => clearInterval(t);
+  }, []);
+  return now;
+}
+
+function left(seconds: number) {
+  if (seconds <= 0) return "expired";
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = seconds % 60;
+  return h ? `${h}h ${m}m left` : `${m}m ${String(s).padStart(2, "0")}s left`;
+}
 
 async function load(id: bigint): Promise<Tab | undefined> {
   const [terms, accounts] = await Promise.all([
@@ -41,10 +86,14 @@ export function TabPanel({
   const [lookup, setLookup] = useState("");
   const [value, setValue] = useState("5");
   const [receipt, setReceipt] = useState("");
+  const [events, setEvents] = useState<Event[] | "unavailable">([]);
+  const [copied, setCopied] = useState(false);
+  const now = useNow();
 
   useEffect(() => {
     if (id === undefined) return setTab(undefined);
     load(id).then(setTab, () => setTab(undefined));
+    history(id).then(setEvents, () => setEvents("unavailable"));
   }, [id, tick]);
 
   const call = (label: string, functionName: string, args: unknown[]) =>
@@ -52,7 +101,13 @@ export function TabPanel({
 
   const isMerchant = tab && account?.toLowerCase() === tab.merchant.toLowerCase();
   const isPayer = tab && account?.toLowerCase() === tab.payer.toLowerCase();
-  const expired = tab && BigInt(Math.floor(Date.now() / 1000)) > tab.captureBy;
+  const expired = tab && BigInt(now) > tab.captureBy;
+  const role = isPayer && isMerchant ? "payer and merchant" : isPayer ? "payer" : isMerchant ? "merchant" : account ? "observer" : "not connected";
+  const share = () => {
+    navigator.clipboard.writeText(`${location.origin}/app/#tab=0x${id!.toString(16)}`);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1200);
+  };
   const entered = amount(value);
 
   const signReceipt = () =>
@@ -109,9 +164,22 @@ export function TabPanel({
         <p className="hint">No tab with this id yet.</p>
       ) : (
         <>
-          <p className="hint mono">
-            {`0x${id.toString(16).slice(0, 10)}…`} · {tab.metered ? "metered" : "unmetered"} · until {clock(tab.captureBy)}
-          </p>
+          <div className="tab-meta">
+            <span className={`role ${role.split(" ")[0]}`}>You: {role}</span>
+            <span className="pill">{tab.metered ? "Metered" : "Unmetered"}</span>
+            <span className={expired ? "pill late" : "pill"} title={`Capture by ${clock(tab.captureBy)}`}>
+              {left(Number(tab.captureBy) - now)}
+            </span>
+          </div>
+          <button className="ghost idline" onClick={share} title="Copy a link to this tab">
+            <span className="mono">{`0x${id.toString(16).slice(0, 12)}…${id.toString(16).slice(-6)}`}</span>
+            <small>{copied ? "Link copied" : "Copy link"}</small>
+          </button>
+          <div className="stack" aria-hidden="true">
+            {(["held", "charged", "released"] as const).map((k) => (
+              <i key={k} className={k} style={{ flexGrow: Number(tab[k]) }} />
+            ))}
+          </div>
           <div className="books">
             {rows.map(([name, v]) => (
               <div key={name}>
@@ -191,6 +259,30 @@ export function TabPanel({
             )}
           </div>
           {!isMerchant && !isPayer && <p className="hint">Connect as the payer or the merchant to act.</p>}
+
+          <div className="history">
+            <h3>History</h3>
+            {events === "unavailable" ? (
+              <p className="hint">History is unavailable from this RPC.</p>
+            ) : events.length === 0 ? (
+              <p className="hint">No events in the last ~30 hours of blocks.</p>
+            ) : (
+              <ol>
+                {events.map((e) => (
+                  <li key={e.hash + e.name} className={e.name.toLowerCase()}>
+                    <i />
+                    <span>{LABELS[e.name] ?? e.name}</span>
+                    <b className="mono">{money(e.amount)}</b>
+                    {txUrl(e.hash) && (
+                      <a href={txUrl(e.hash)} target="_blank" rel="noreferrer" aria-label="View transaction">
+                        ↗
+                      </a>
+                    )}
+                  </li>
+                ))}
+              </ol>
+            )}
+          </div>
         </>
       )}
     </article>

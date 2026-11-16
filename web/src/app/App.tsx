@@ -4,14 +4,15 @@ import { Merchant } from "./Merchant.tsx";
 import { Payer } from "./Payer.tsx";
 import { TabPanel } from "./TabPanel.tsx";
 import { Footer, Nav } from "../ui/Shell.tsx";
-import { chain, connect, reason, short } from "../wallet.ts";
+import * as wallet from "../wallet.ts";
+import { chain, connect, reason, short, txUrl } from "../wallet.ts";
 
 /** What every panel needs: the connected account and a way to run a step. */
 export type Session = {
   account?: Address;
   tick: number;
   busy: boolean;
-  run: (label: string, work: () => Promise<void>) => Promise<void>;
+  run: (label: string, work: () => Promise<unknown>) => Promise<void>;
 };
 
 const params = new URLSearchParams(location.hash.slice(1));
@@ -20,7 +21,7 @@ export function App() {
   const [account, setAccount] = useState<Address>();
   const [tick, setTick] = useState(0);
   const [busy, setBusy] = useState(false);
-  const [notice, setNotice] = useState<{ text: string; bad?: boolean }>();
+  const [notice, setNotice] = useState<{ text: string; bad?: boolean; href?: string }>();
   const [code, setCode] = useState(params.get("a") ?? "");
   const [id, setId] = useState<bigint | undefined>(() => {
     try {
@@ -33,9 +34,11 @@ export function App() {
   const run: Session["run"] = async (label, work) => {
     setBusy(true);
     setNotice({ text: `${label}…` });
+    const before = wallet.lastHash;
     try {
       await work();
-      setNotice({ text: `${label}: done` });
+      const hash = wallet.lastHash !== before ? wallet.lastHash : undefined;
+      setNotice({ text: `${label}: done`, href: hash && txUrl(hash) });
     } catch (error) {
       setNotice({ text: reason(error), bad: true });
     } finally {
@@ -88,8 +91,13 @@ export function App() {
         </section>
 
         {notice && (
-          <p className={notice.bad ? "notice bad" : "notice"} role="status">
-            {notice.text}
+          <p className={notice.bad ? "notice bad" : busy ? "notice busy" : "notice"} role="status">
+            <span>{notice.text}</span>
+            {notice.href && (
+              <a href={notice.href} target="_blank" rel="noreferrer">
+                View transaction ↗
+              </a>
+            )}
           </p>
         )}
 

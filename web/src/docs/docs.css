@@ -1,23 +1,64 @@
+/* Docs: an engineering manual. Sticky contents on the left, generous
+   section rhythm, prose kept to a readable measure, drawings full width. */
 .docs {
+  --coral-ink: #c23a1d;
+  --cobalt-ink: #1f46cc;
+  --measure: 68ch;
   display: grid;
-  grid-template-columns: 220px 1fr;
-  gap: 48px;
-  margin-top: 56px;
+  grid-template-columns: 210px minmax(0, 1fr);
+  gap: clamp(32px, 5vw, 80px);
+  padding-top: clamp(40px, 6vw, 72px);
 }
 
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* Contents */
 .docs aside nav {
   position: sticky;
   top: 112px;
   display: grid;
   gap: 2px;
+  padding-left: 14px;
+  border-left: 1px dashed var(--cobalt);
+}
+
+.toc-title {
+  margin-bottom: 10px;
+  color: var(--cobalt);
+  font: 500 11px/1 var(--mono);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
 }
 
 .docs aside a {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
   padding: 8px 12px;
   border-radius: 10px;
   color: var(--muted);
   font-weight: 600;
+  font-size: 15px;
   text-decoration: none;
+  transition:
+    background 0.2s ease,
+    color 0.2s ease;
+}
+
+.docs aside a .mono {
+  font-size: 11px;
+  opacity: 0.6;
+}
+
+.docs aside a:hover {
+  color: var(--navy);
 }
 
 .docs aside a[aria-current="true"] {
@@ -25,50 +66,123 @@
   color: var(--navy);
 }
 
+.toc-mobile {
+  display: none;
+}
+
 .docs article {
   min-width: 0;
-  max-width: 820px;
+  max-width: 900px;
 }
 
-.docs section {
-  padding: 28px 0 40px;
-  border-bottom: 1px dashed var(--rule);
-  scroll-margin-top: 100px;
+/* Section rhythm */
+.dsec {
+  padding-top: clamp(96px, 11vw, 140px);
+  scroll-margin-top: 72px;
 }
 
-.docs h1 {
-  margin: 16px 0;
-  font-size: clamp(48px, 8vw, 88px);
+.dsec.hero {
+  padding-top: 8px;
 }
 
-.docs h2 {
-  margin-bottom: 16px;
-  font-size: 40px;
+.dsec-head {
+  display: grid;
+  gap: 18px;
+  margin-bottom: clamp(32px, 4vw, 48px);
+}
+
+.dsec-head .dimension {
+  max-width: 260px;
+}
+
+.dsec-head .dimension::before {
+  flex: 0 0 24px;
+}
+
+.dsec h2 {
+  font-size: clamp(36px, 5vw, 60px);
+}
+
+.dsec-body {
+  display: grid;
+  gap: clamp(28px, 3.5vw, 44px);
 }
 
 .docs p,
 .docs li {
+  max-width: var(--measure);
   color: #2c3345;
   font-size: 17px;
+  line-height: 1.7;
 }
 
-.docs p.big {
-  font-size: 20px;
+.docs p {
+  margin: 0;
+}
+
+.docs .lede {
+  color: var(--muted);
+  font-size: 19px;
 }
 
 .docs p code,
 .docs li code,
-.docs td code {
+.docs td code,
+.docs dd code {
   padding: 1px 6px;
   border-radius: 6px;
   background: rgba(42, 91, 255, 0.1);
   color: var(--navy);
   font-size: 0.85em;
+  overflow-wrap: anywhere;
+}
+
+/* Hero */
+.hero h1 {
+  margin: 20px 0 24px;
+  font-size: clamp(48px, 8vw, 96px);
+}
+
+.hero h1 em {
+  color: var(--cobalt);
+}
+
+.hero p.big {
+  font-size: clamp(19px, 2vw, 22px);
+}
+
+.facts {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin: 36px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.facts li {
+  display: grid;
+  gap: 4px;
+  padding: 16px 18px;
+  border-radius: 16px;
+  background: var(--white);
+  font-size: 14px;
+  line-height: 1.35;
+}
+
+.facts b {
+  color: var(--navy);
+  font: 800 40px/1 var(--display);
+  letter-spacing: -0.04em;
+}
+
+.facts li:first-child {
+  background: var(--lime);
 }
 
 .slip {
   display: grid;
-  margin: 24px 0 0;
+  margin: 16px 0 0;
   padding: 16px 20px;
   border-radius: 16px;
   background: var(--white);
@@ -84,6 +198,10 @@
   overflow-wrap: anywhere;
 }
 
+.slip div:last-child {
+  border-bottom: 0;
+}
+
 .slip dt {
   color: var(--muted);
 }
@@ -93,65 +211,1150 @@
   text-align: right;
 }
 
-.snippet {
-  position: relative;
-  margin: 16px 0;
-  border-radius: 16px;
-  overflow: hidden;
+/* Notes and pairs */
+.pair {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
 }
 
-.snippet pre {
+.code-pair {
+  align-items: start;
+}
+
+.note {
+  display: grid;
+  gap: 12px;
+  align-content: start;
+  padding: 22px 24px;
+}
+
+.note .tag {
+  justify-self: start;
+}
+
+.note p {
+  font-size: 16px;
+}
+
+.limits {
+  display: grid;
+  gap: 10px;
   margin: 0;
-  padding: 22px;
-  overflow-x: auto;
-  font-size: 13px;
-  line-height: 1.65;
+  padding: 0;
+  list-style: none;
 }
 
-.snippet .copy {
-  position: absolute;
-  top: 10px;
-  right: 10px;
-  min-height: 32px;
-  padding: 0 12px;
-  color: var(--lime);
-  font-size: 13px;
-}
-
-.scroll {
-  overflow-x: auto;
-  margin: 16px 0;
-  border-radius: 16px;
+.limits li {
+  position: relative;
+  max-width: none;
+  padding: 14px 18px 14px 44px;
+  border-radius: 14px;
   background: var(--white);
 }
 
-.scroll table {
+.limits li::before {
+  content: "";
+  position: absolute;
+  top: 24px;
+  left: 18px;
+  width: 12px;
+  height: 2px;
+  background: var(--coral);
+}
+
+/* Tables: rows become cards on narrow screens, so nothing scrolls sideways. */
+.dtable {
+  border-radius: 18px;
+  background: var(--white);
+  overflow: hidden;
+  box-shadow: 0 1px 0 var(--rule);
+}
+
+.dtable table {
   width: 100%;
   border-collapse: collapse;
   font-size: 15px;
 }
 
-.scroll th {
-  padding: 12px 14px;
+.dtable th {
+  padding: 13px 16px;
   background: var(--navy);
   color: var(--paper);
   font-weight: 600;
   text-align: left;
-  white-space: nowrap;
 }
 
-.scroll td {
-  padding: 12px 14px;
+.dtable td {
+  padding: 13px 16px;
   border-bottom: 1px dashed var(--rule);
   vertical-align: top;
+  overflow-wrap: anywhere;
 }
 
+.dtable tr:last-child td {
+  border-bottom: 0;
+}
+
+.dtable tbody tr:hover td {
+  background: rgba(212, 255, 58, 0.18);
+}
+
+/* ===== Diagrams ===== */
+.dg {
+  position: relative;
+  margin: 0;
+  padding: clamp(16px, 3vw, 28px);
+  border-radius: var(--radius);
+  background: var(--white);
+  box-shadow: 0 1px 0 var(--rule);
+}
+
+/* Blueprint corner marks. */
+.dg::before,
+.dg::after {
+  content: "";
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  border: 0 solid var(--cobalt);
+  opacity: 0.6;
+  pointer-events: none;
+}
+
+.dg::before {
+  top: 10px;
+  left: 10px;
+  border-width: 1.5px 0 0 1.5px;
+}
+
+.dg::after {
+  right: 10px;
+  bottom: 10px;
+  border-width: 0 1.5px 1.5px 0;
+}
+
+.dg-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+  margin-bottom: 18px;
+}
+
+.dg-label {
+  color: var(--cobalt);
+  font: 500 12px/1 var(--mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.dg-head h3 {
+  font-size: clamp(20px, 2.4vw, 26px);
+  letter-spacing: -0.025em;
+}
+
+.dg-head h3 em {
+  color: var(--cobalt);
+}
+
+.dg-actions {
+  margin-left: auto;
+}
+
+.dg-btn {
+  min-height: 38px;
+  padding: 0 14px;
+  font-size: 14px;
+}
+
+.dg-svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 14px;
+  background-color: #fbfbf8;
+  background-image:
+    linear-gradient(var(--grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+  background-size: 24px 24px;
+  overflow: visible;
+}
+
+.dg-svg text {
+  fill: var(--navy);
+  font-family: var(--mono);
+}
+
+.dg figcaption {
+  max-width: var(--measure);
+  margin-top: 18px;
+  color: var(--muted);
+  font-size: 15px;
+  line-height: 1.6;
+}
+
+.dg-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 20px;
+  margin: 16px 0 0;
+  padding: 0;
+  list-style: none;
+  color: var(--muted);
+  font: 400 12.5px/1.4 var(--mono);
+}
+
+.dg-legend li {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sw {
+  display: inline-block;
+  width: 22px;
+  height: 0;
+  border-top: 2px solid var(--navy);
+}
+
+.sw.sign {
+  border-top: 2px dashed var(--cobalt);
+}
+
+.sw.pay {
+  height: 10px;
+  border: 0;
+  border-radius: 3px;
+  background: var(--lime);
+  box-shadow: inset 0 0 0 1px var(--navy);
+}
+
+.sw.back {
+  border-top-color: var(--coral);
+}
+
+.sw.charged {
+  border-top: 4px solid var(--navy);
+}
+
+/* Tabs */
+.dg-tabs {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 16px;
+  padding: 4px;
+  border-radius: 14px;
+  background: var(--paper);
+}
+
+.dg-tabs [role="tab"] {
+  min-height: 38px;
+  padding: 0 14px;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.dg-tabs [role="tab"]:hover:not(:disabled) {
+  background: rgba(14, 27, 61, 0.06);
+  color: var(--navy);
+}
+
+.dg-tabs [role="tab"][aria-selected="true"] {
+  background: var(--navy);
+  color: var(--lime);
+}
+
+/* Shared animation primitives. Default state is the final state, so with
+   reduced motion (base.css strips animations) every drawing is complete. */
+.dg:not(.on) .a-draw,
+.dg:not(.on) .a-pop,
+.dg:not(.on) .a-fade,
+.dg:not(.on) .a-dash,
+.dg:not(.on) .a-grow,
+.dg:not(.on) .receipt,
+.dg:not(.on) .bouncer,
+.dg:not(.on) .cursor {
+  opacity: 0;
+}
+
+.dg.on .a-draw {
+  transform-box: view-box;
+  animation: dg-draw 0.5s cubic-bezier(0.3, 0.7, 0.2, 1) var(--d, 0s) both;
+}
+
+.dg.on .a-pop {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: dg-pop 0.35s cubic-bezier(0.3, 1.5, 0.5, 1) calc(var(--d, 0s) + 0.4s) both;
+}
+
+.dg.on .a-fade {
+  animation: dg-fade 0.5s ease calc(var(--d, 0s) + 0.15s) both;
+}
+
+.dg.on .a-dash {
+  stroke-dasharray: 1;
+  animation: dg-dash 0.8s ease var(--d, 0s) both;
+}
+
+.dg.on .a-grow {
+  transform-box: view-box;
+  animation: dg-grow 0.7s cubic-bezier(0.3, 0.7, 0.2, 1) var(--d, 0s) both;
+}
+
+/* Inherit the row delay from the group. */
+.msg .a-pop,
+.msg .a-fade,
+.msg .a-draw,
+.settle .a-grow,
+.settle .a-fade,
+.replay .a-fade {
+  --d: inherit;
+}
+
+@keyframes dg-draw {
+  from {
+    transform: scaleX(0);
+  }
+}
+
+@keyframes dg-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.2);
+  }
+}
+
+@keyframes dg-fade {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+
+@keyframes dg-dash {
+  from {
+    stroke-dashoffset: 1;
+  }
+}
+
+@keyframes dg-grow {
+  from {
+    transform: scaleY(0);
+  }
+}
+
+/* Fig. 1, sequence */
+.seq-actor rect {
+  fill: var(--white);
+  stroke: var(--navy);
+  stroke-width: 1.5;
+}
+
+.seq-actor.core rect {
+  fill: var(--navy);
+}
+
+.seq-actor.core text {
+  fill: var(--lime);
+}
+
+.seq-actor text {
+  font-family: var(--display);
+  font-weight: 700;
+}
+
+.lifeline {
+  stroke: var(--cobalt);
+  stroke-width: 1;
+  stroke-dasharray: 3 5;
+  opacity: 0.55;
+}
+
+.seq-actor .tick {
+  stroke: var(--navy);
+  stroke-width: 1.5;
+}
+
+.frame rect {
+  fill: rgba(42, 91, 255, 0.03);
+  stroke: var(--navy);
+  stroke-width: 1;
+  opacity: 0.85;
+}
+
+.frame.loop rect {
+  fill: rgba(212, 255, 58, 0.12);
+  stroke-dasharray: 5 4;
+}
+
+.frame-tag {
+  fill: var(--navy);
+}
+
+.dg-svg .frame-op {
+  fill: var(--lime);
+  font-weight: 600;
+}
+
+.dg-svg .guard {
+  fill: var(--cobalt-ink);
+  font-style: italic;
+}
+
+.frame .split {
+  stroke: var(--navy);
+  stroke-dasharray: 6 5;
+  opacity: 0.7;
+}
+
+.msg .line {
+  fill: none;
+  stroke: var(--navy);
+  stroke-width: 1.75;
+}
+
+.msg .head,
+.msg .dot {
+  fill: var(--navy);
+}
+
+.msg.sign .line {
+  stroke: var(--cobalt);
+  stroke-dasharray: 6 4;
+}
+
+.msg.sign .head,
+.msg.sign .dot {
+  fill: var(--cobalt);
+}
+
+.dg-svg .msg.sign .lbl {
+  fill: var(--cobalt-ink);
+}
+
+.msg.back .line {
+  stroke: var(--coral);
+  stroke-width: 2;
+}
+
+.msg.back .head,
+.msg.back .dot {
+  fill: var(--coral);
+}
+
+.msg .hl {
+  fill: var(--lime);
+}
+
+.msg.back .hl {
+  fill: var(--peach);
+}
+
+.dg-svg .lbl {
+  paint-order: stroke;
+  stroke: #fbfbf8;
+  stroke-width: 4px;
+  stroke-linejoin: round;
+}
+
+.dg-svg .msg.pay .lbl,
+.dg-svg .msg.back .lbl {
+  stroke: none;
+}
+
+/* Fig. 2, funding */
+.fund .track {
+  fill: none;
+  stroke: var(--cobalt);
+  stroke-width: 2;
+  stroke-dasharray: 7 6;
+  animation: dg-march 0.9s linear infinite;
+}
+
+@keyframes dg-march {
+  to {
+    stroke-dashoffset: -13;
+  }
+}
+
+.coins circle {
+  fill: var(--lime);
+  stroke: var(--navy);
+  stroke-width: 1.5;
+}
+
+.dg-svg .coins text {
+  font-weight: 700;
+}
+
+.payer circle {
+  fill: var(--white);
+  stroke: var(--navy);
+  stroke-width: 2;
+}
+
+.dg-svg .payer text,
+.dg-svg .mover .t,
+.dg-svg .escrow .t {
+  font-family: var(--display);
+  font-weight: 800;
+}
+
+.mover rect {
+  fill: var(--white);
+  stroke: var(--navy);
+  stroke-width: 2;
+}
+
+.escrow rect {
+  fill: var(--navy);
+}
+
+.dg-svg .escrow text {
+  fill: var(--paper);
+}
+
+.dg-svg .escrow .t {
+  fill: var(--lime);
+}
+
+.card rect {
+  fill: var(--paper);
+  stroke: var(--cobalt);
+  stroke-dasharray: 4 3;
+}
+
+.dg-svg .card .k {
+  fill: var(--muted);
+  letter-spacing: 0.04em;
+}
+
+.dg-svg .card .v {
+  font-weight: 700;
+}
+
+.dg-svg .chip text {
+  fill: var(--navy);
+  font-weight: 600;
+}
+
+.dg-svg .chip.none text {
+  fill: var(--muted);
+  font-style: italic;
+}
+
+.verify {
+  fill: none;
+  stroke: var(--cobalt);
+  stroke-width: 1.5;
+  stroke-dasharray: 0.012 0.012;
+}
+
+.dg.on .verify.a-dash {
+  stroke-dasharray: 0.012 0.012;
+  animation: dg-fade 0.6s ease var(--d, 0s) both;
+}
+
+.dg-svg .note {
+  fill: var(--cobalt-ink);
+  font-style: italic;
+}
+
+.call {
+  fill: none;
+  stroke: var(--navy);
+  stroke-width: 1.75;
+}
+
+.call-head {
+  fill: var(--navy);
+}
+
+.dg-svg .call-lbl {
+  font-weight: 600;
+  paint-order: stroke;
+  stroke: #fbfbf8;
+  stroke-width: 4px;
+}
+
+.dg-svg .check text {
+  font-weight: 600;
+}
+
+.dg-svg .err {
+  fill: var(--coral-ink);
+  font-weight: 600;
+}
+
+.dg-facts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 28px;
+  margin: 20px 0 0;
+  animation: dg-fade 0.4s ease both;
+}
+
+.dg-facts div {
+  display: grid;
+  gap: 4px;
+  padding: 12px 0;
+  border-top: 1px dashed var(--rule);
+}
+
+.dg-facts div:last-child {
+  grid-column: 1 / -1;
+}
+
+.dg-facts dt {
+  color: var(--cobalt);
+  font: 500 11px/1.2 var(--mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.dg-facts dd {
+  margin: 0;
+  color: #2c3345;
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+.dg-facts dd span {
+  color: var(--muted);
+}
+
+/* Fig. 3, ledger */
+.party rect {
+  fill: var(--white);
+  stroke: var(--navy);
+  stroke-width: 1.5;
+  transition:
+    fill 0.3s ease,
+    stroke 0.3s ease;
+}
+
+.dg-svg .party text {
+  font-family: var(--display);
+  font-weight: 700;
+}
+
+.party.debit rect,
+.tank.debit .shell {
+  stroke: var(--navy);
+  stroke-width: 3;
+}
+
+.party.credit rect {
+  fill: var(--peach);
+  stroke: var(--coral);
+}
+
+.tank .shell {
+  fill: var(--white);
+  stroke: var(--navy);
+  stroke-width: 1.5;
+  transition:
+    stroke 0.3s ease,
+    stroke-width 0.3s ease;
+}
+
+.tank.refunded .shell {
+  stroke-dasharray: 6 4;
+}
+
+.tank.credit .shell {
+  stroke: var(--coral);
+  stroke-width: 3;
+}
+
+.tank .fill {
+  fill: var(--lime);
+  transform-box: fill-box;
+  transform-origin: bottom;
+  transition: transform 0.7s cubic-bezier(0.3, 0.7, 0.2, 1);
+}
+
+.tank.held .fill {
+  fill: rgba(42, 91, 255, 0.22);
+}
+
+.tank.released .fill {
+  fill: rgba(255, 91, 58, 0.28);
+}
+
+.tank.refunded .fill {
+  fill: var(--peach);
+}
+
+.dg-svg .tank .name {
+  fill: var(--muted);
+  font-weight: 500;
+}
+
+.dg-svg .tank .num {
+  font-family: var(--display);
+  font-weight: 800;
+  letter-spacing: -0.03em;
+}
+
+.dg-svg .tank .badge {
+  font-weight: 700;
+}
+
+.dg-svg .tank.credit .badge {
+  fill: var(--coral-ink);
+}
+
+.dim path {
+  fill: none;
+  stroke: var(--cobalt);
+  stroke-width: 1.25;
+}
+
+.dim polygon {
+  fill: var(--cobalt);
+}
+
+.dim rect {
+  fill: #fbfbf8;
+}
+
+.dg-svg .dim text {
+  fill: var(--cobalt-ink);
+  font-weight: 600;
+}
+
+.posting .flow {
+  fill: none;
+  stroke: var(--navy);
+  stroke-width: 2;
+}
+
+.posting .flow-head {
+  fill: var(--navy);
+}
+
+.posting .a-dash {
+  stroke-dasharray: 1;
+  animation: dg-dash 0.7s ease both;
+}
+
+.posting .a-pop {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: dg-pop 0.3s ease 0.6s both;
+}
+
+.chip {
+  fill: var(--navy);
+}
+
+.dg-svg .chip-t {
+  fill: var(--lime);
+  font-weight: 700;
+}
+
+.ledger-read {
+  display: grid;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.docs .eq {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 10px;
+  max-width: none;
+  color: var(--navy);
+  font: 600 clamp(15px, 2vw, 19px) / 1.4 var(--mono);
+}
+
+.docs .eq.small {
+  font-size: 14px;
+}
+
+.eq b {
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.eq > span {
+  padding: 2px 8px;
+  border-radius: 8px;
+  transition: background 0.3s ease;
+}
+
+.eq .debit {
+  background: var(--lime);
+}
+
+.eq .credit {
+  background: var(--peach);
+}
+
+.eq .op {
+  padding: 0;
+  color: var(--cobalt);
+}
+
+.eq .ok {
+  color: var(--cobalt-ink);
+  font-size: 0.85em;
+}
+
+.docs .now {
+  min-height: 3.4em;
+  font-size: 15px;
+}
+
+.now .post {
+  display: block;
+  color: var(--muted);
+  font: 400 13px/1.6 var(--mono);
+}
+
+.stepper {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px dashed var(--rule);
+}
+
+.stepper .steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0 0 0 auto;
+  padding: 0;
+  list-style: none;
+}
+
+.stepper .steps li {
+  max-width: none;
+}
+
+.stepper .steps button {
+  min-height: 32px;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: var(--paper);
+  color: var(--muted);
+  font: 500 12px/1 var(--mono);
+}
+
+.stepper .steps button.done {
+  background: rgba(42, 91, 255, 0.12);
+  color: var(--navy);
+}
+
+.stepper .steps button[aria-current="step"] {
+  background: var(--navy);
+  color: var(--lime);
+}
+
+/* Fig. 4, receipts */
+.axis .grid {
+  stroke: var(--rule);
+  stroke-width: 1;
+}
+
+.axis .grid.base {
+  stroke: var(--navy);
+  stroke-width: 1.5;
+}
+
+.dg-svg .axis text {
+  fill: var(--muted);
+}
+
+.axis .limit {
+  stroke: var(--coral);
+  stroke-width: 1.5;
+  stroke-dasharray: 6 5;
+}
+
+.dg-svg .limit-t {
+  fill: var(--coral-ink);
+}
+
+.rcpt .signed {
+  fill: none;
+  stroke: var(--cobalt);
+  stroke-width: 2;
+  stroke-dasharray: 6 4;
+}
+
+.rcpt .charged {
+  fill: none;
+  stroke: var(--navy);
+  stroke-width: 4;
+  stroke-linejoin: round;
+}
+
+.dg.on .sweep-rect {
+  transform-box: view-box;
+  animation: dg-sweep 6.4s linear 0.2s both;
+}
+
+@keyframes dg-sweep {
+  from {
+    transform: scaleX(0);
+  }
+}
+
+.rcpt .cursor {
+  stroke: var(--cobalt);
+  stroke-width: 1.5;
+  opacity: 0;
+}
+
+.dg.on .rcpt .cursor {
+  animation: dg-cursor 6.4s linear 0.2s both;
+}
+
+@keyframes dg-cursor {
+  0% {
+    opacity: 0.8;
+    transform: translateX(0);
+  }
+  97% {
+    opacity: 0.8;
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(var(--sweep));
+  }
+}
+
+.receipt circle {
+  fill: var(--cobalt);
+  stroke: var(--white);
+  stroke-width: 2;
+}
+
+.receipt rect {
+  fill: var(--white);
+  stroke: var(--cobalt);
+  stroke-width: 1.25;
+}
+
+.dg-svg .receipt text {
+  fill: var(--cobalt-ink);
+  font-weight: 600;
+}
+
+.dg.on .receipt {
+  transform-box: fill-box;
+  transform-origin: center bottom;
+  animation: dg-pop 0.4s cubic-bezier(0.3, 1.5, 0.5, 1) var(--d, 0s) both;
+}
+
+.payout {
+  fill: var(--lime);
+  stroke: var(--navy);
+  stroke-width: 1.25;
+}
+
+.dg-svg .paid {
+  font-weight: 700;
+  paint-order: stroke;
+  stroke: #fbfbf8;
+  stroke-width: 4px;
+}
+
+.dg-svg .settle-t {
+  fill: var(--navy);
+  font-weight: 600;
+}
+
+.replay .wall {
+  stroke: var(--coral);
+  stroke-width: 3;
+}
+
+.bouncer rect {
+  fill: var(--peach);
+  stroke: var(--coral);
+  stroke-width: 1.5;
+}
+
+.dg-svg .bouncer text {
+  fill: var(--coral-ink);
+  font-weight: 700;
+}
+
+.dg.on .bouncer {
+  animation: dg-bounce 1.3s cubic-bezier(0.3, 0.6, 0.3, 1) var(--d, 0s) both;
+}
+
+@keyframes dg-bounce {
+  0% {
+    opacity: 0;
+    transform: translateY(0);
+  }
+  10% {
+    opacity: 1;
+  }
+  42% {
+    transform: translateY(calc(-1 * var(--rise)));
+  }
+  58% {
+    transform: translateY(calc(-0.55 * var(--rise)));
+  }
+  70% {
+    transform: translateY(calc(-0.75 * var(--rise)));
+  }
+  80%,
+  88% {
+    transform: translate(0, 0);
+  }
+  92% {
+    transform: translate(-4px, 0);
+  }
+  96% {
+    transform: translate(4px, 0);
+  }
+  100% {
+    opacity: 1;
+    transform: translate(0, 0);
+  }
+}
+
+.dg-svg .stale text {
+  fill: var(--coral-ink);
+  font-weight: 700;
+}
+
+.dg-svg .stale .settle-t {
+  fill: var(--coral-ink);
+}
+
+.dg-svg .stale .why {
+  font-weight: 400;
+}
+
+/* ===== Narrow screens ===== */
 @media (max-width: 860px) {
   .docs {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .docs aside {
     display: none;
+  }
+
+  .toc-mobile {
+    display: block;
+    margin-bottom: 32px;
+    border-radius: 14px;
+    background: var(--white);
+  }
+
+  .toc-mobile summary {
+    padding: 14px 18px;
+    font-weight: 700;
+    cursor: pointer;
+  }
+
+  .toc-mobile nav {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 0 14px 14px;
+  }
+
+  .toc-mobile a {
+    padding: 6px 10px;
+    border-radius: 8px;
+    background: var(--paper);
+    font-size: 14px;
+    font-weight: 600;
+    text-decoration: none;
+  }
+
+  .pair {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 640px) {
+  .facts {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .slip div {
+    display: grid;
+    gap: 2px;
+  }
+
+  .slip dd {
+    text-align: left;
+  }
+
+  .dg-facts {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .stepper .steps {
+    margin-left: 0;
+    width: 100%;
+  }
+
+  .dtable thead {
+    display: none;
+  }
+
+  .dtable table,
+  .dtable tbody,
+  .dtable tr,
+  .dtable td {
+    display: block;
+  }
+
+  .dtable tr {
+    padding: 12px 16px;
+    border-bottom: 1px dashed var(--rule);
+  }
+
+  .dtable tr:last-child {
+    border-bottom: 0;
+  }
+
+  .dtable td {
+    display: grid;
+    grid-template-columns: 7.5em minmax(0, 1fr);
+    gap: 10px;
+    padding: 4px 0;
+    border: 0;
+  }
+
+  .dtable td > code {
+    justify-self: start;
+  }
+
+  .dtable td::before {
+    content: attr(data-label);
+    color: var(--cobalt);
+    font: 500 11px/1.9 var(--mono);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+
+  .docs p,
+  .docs li {
+    font-size: 16px;
+  }
+
+  .docs .lede {
+    font-size: 17px;
   }
 }

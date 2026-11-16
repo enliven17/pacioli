@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from "react";
+import { useReveal, useScrollVars } from "./motion.ts";
 import deployment from "../deployment.json";
 
 export const REPO = "https://github.com/enliven17/pacioli";
@@ -38,8 +39,11 @@ const LINKS = [
 
 export function Nav({ current, children }: { current?: string; children?: ReactNode }) {
   const [open, setOpen] = useState(false);
+  useReveal();
+  useScrollVars();
   return (
     <header className="bar">
+      <i className="progress" aria-hidden="true" />
       <div className="wrap">
         <div className="pill">
           <Logo />

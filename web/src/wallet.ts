@@ -8,6 +8,7 @@ import {
   http,
   parseUnits,
   type Address,
+  type Hex,
   type EIP1193Provider,
 } from "viem";
 import { anvil, sepolia } from "viem/chains";
@@ -28,7 +29,9 @@ export const DECIMALS = 6;
 export const SYMBOL = "dUSD";
 
 /** Reads go through the chain's public RPC, so the page works before connecting. */
-export const reader = createPublicClient({ chain, transport: http() });
+// publicnode serves Sepolia logs over a 10k-block window; the chain default does not.
+const READ_RPC: Record<number, string> = { 11155111: "https://ethereum-sepolia-rpc.publicnode.com" };
+export const reader = createPublicClient({ chain, transport: http(READ_RPC[chain.id]) });
 
 export async function connect(): Promise<Address> {
   if (!window.ethereum) throw new Error("No wallet found. Install MetaMask or another EVM wallet.");
@@ -53,7 +56,15 @@ export async function send(account: Address, request: object) {
     confirmations: chain.id === anvil.id ? 1 : 2,
   });
   if (receipt.status !== "success") throw new Error("Transaction reverted");
+  lastHash = hash;
+  return hash;
 }
+
+/** The most recent transaction this page sent, for the status line. */
+export let lastHash: Hex | undefined;
+
+export const explorer = chain.blockExplorers?.default.url;
+export const txUrl = (hash: Hex) => (explorer ? `${explorer}/tx/${hash}` : undefined);
 
 export async function signTypedData(account: Address, data: object) {
   const wallet = createWalletClient({ chain, transport: custom(window.ethereum!) });

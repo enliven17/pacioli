@@ -49,7 +49,11 @@ body {
   font: 400 16px/1.6 var(--display);
   font-variant-numeric: tabular-nums;
   -webkit-font-smoothing: antialiased;
-  overflow-x: hidden;
+  overflow-x: clip;
+}
+
+html {
+  overflow-x: clip;
 }
 
 .wrap {
@@ -439,5 +443,204 @@ textarea {
     animation: none !important;
     transition: none !important;
     scroll-behavior: auto !important;
+  }
+}
+
+/* Sections: the one spacing rule every page uses. `.wrap` sets side padding
+   only, so vertical rhythm never collides with it. */
+.wrap {
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
+.section {
+  padding-block: clamp(88px, 12vw, 168px) 0;
+}
+
+.section-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
+  gap: 24px 64px;
+  align-items: end;
+  margin-bottom: clamp(36px, 5vw, 64px);
+}
+
+.section-head .tag {
+  grid-column: 1 / -1;
+  justify-self: start;
+}
+
+.section-head h2 {
+  font-size: clamp(40px, 5.6vw, 72px);
+}
+
+.section-head p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 18px;
+}
+
+@media (max-width: 860px) {
+  .section-head {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Scroll reveal. Hidden only once JS has marked the page. */
+.js [data-reveal] {
+  opacity: 0;
+  transform: translateY(28px);
+  transition:
+    opacity 0.7s cubic-bezier(0.2, 0.7, 0.2, 1) var(--delay, 0ms),
+    transform 0.8s cubic-bezier(0.2, 0.7, 0.2, 1) var(--delay, 0ms);
+}
+
+.js [data-reveal="left"] {
+  transform: translateX(-36px);
+}
+
+.js [data-reveal="right"] {
+  transform: translateX(36px);
+}
+
+.js [data-reveal="scale"] {
+  transform: scale(0.94);
+}
+
+.js [data-reveal].in {
+  opacity: 1;
+  transform: none;
+}
+
+/* Scroll progress: a lime rule under the nav. */
+.progress {
+  position: fixed;
+  inset: 0 0 auto;
+  z-index: 30;
+  height: 3px;
+  background: var(--cobalt);
+  transform-origin: left;
+  transform: scaleX(var(--scroll, 0));
+}
+
+/* Code: solid ink, wrapped lines, never a horizontal scroll. */
+.codeblock {
+  margin: 0;
+  border-radius: 18px;
+  background: #0a1430;
+  color: #dfe5f5;
+  overflow: hidden;
+  box-shadow: 0 0 0 1px rgba(122, 156, 255, 0.18);
+}
+
+.codeblock figcaption {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px 10px 16px;
+  border-bottom: 1px solid rgba(122, 156, 255, 0.16);
+  color: #9fb0d8;
+  font: 400 12px/1 var(--mono);
+}
+
+.codeblock .dots {
+  display: inline-flex;
+  gap: 6px;
+}
+
+.codeblock .dots i {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--coral);
+}
+
+.codeblock .dots i:nth-child(2) {
+  background: var(--peach);
+}
+
+.codeblock .dots i:nth-child(3) {
+  background: var(--lime);
+}
+
+.codeblock .copy {
+  min-height: 28px;
+  margin-left: auto;
+  padding: 0 10px;
+  border-radius: 8px;
+  background: rgba(212, 255, 58, 0.12);
+  color: var(--lime);
+  font: 600 12px/1 var(--display);
+}
+
+.codeblock pre {
+  margin: 0;
+  padding: 16px 0;
+  font: 400 13.5px/1.7 var(--mono);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.codeblock .line {
+  display: block;
+  padding: 0 20px;
+  border-left: 3px solid transparent;
+}
+
+.codeblock .line.mark {
+  background: rgba(212, 255, 58, 0.09);
+  border-left-color: var(--lime);
+}
+
+.t-k {
+  color: #ff8a6b;
+}
+
+.t-t {
+  color: var(--lime);
+}
+
+.t-s {
+  color: var(--peach);
+}
+
+.t-n {
+  color: #8fb1ff;
+}
+
+.t-c {
+  color: #7d8bb0;
+  font-style: italic;
+}
+
+.t-a {
+  color: #b9a2ff;
+}
+
+.bar .pill > .button,
+.bar .pill > button {
+  white-space: nowrap;
+}
+
+@media (max-width: 480px) {
+  .bar .pill {
+    gap: 8px;
+    padding-left: 12px;
+  }
+
+  .bar .logo {
+    font-size: 21px;
+  }
+
+  .bar .logo svg {
+    width: 28px;
+    height: 28px;
+  }
+
+  .bar .pill > .button,
+  .bar .pill > button {
+    min-height: 40px;
+    padding: 0 12px;
+    font-size: 14px;
   }
 }
