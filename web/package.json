@@ -1,5 +1,5 @@
 {
-  "name": "tab-web",
+  "name": "pacioli-web",
   "private": true,
   "type": "module",
   "scripts": {

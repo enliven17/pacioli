@@ -1,6 +1,6 @@
 {
-  "chainId": 31337,
-  "pacioli": "0x5fbdb2315678afecb367f032d93f642f64180aa3",
-  "token": "0xe7f1725e7734ce288f8367e1bb143e90bb3f0512",
+  "chainId": 11155111,
+  "pacioli": "0xf850739833d8bdb5fe5cf5876cdb14d861697318",
+  "token": "0xc15038738507e7634a1d36a178e7b2211869eed1",
   "permit2": "0x000000000022D473030F116dDEE9F6B43aC78BA3"
 }
