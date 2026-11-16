@@ -2,9 +2,9 @@ import { useEffect, useState } from "react";
 import type { Address } from "viem";
 import { Merchant } from "./Merchant.tsx";
 import { Payer } from "./Payer.tsx";
-import { Receipt } from "./Receipt.tsx";
+import { TabPanel } from "./TabPanel.tsx";
 import { Footer, Nav } from "../ui/Shell.tsx";
-import { chain, connect, reason, short, tab } from "../wallet.ts";
+import { chain, connect, reason, short } from "../wallet.ts";
 
 /** What every panel needs: the connected account and a way to run a step. */
 export type Session = {
@@ -55,14 +55,12 @@ export function App() {
   }, [id]);
 
   const session: Session = { account, tick, busy, run };
-
   const stage = id !== undefined ? 3 : code.trim() ? 2 : 1;
 
   return (
     <>
       <Nav current="/app/">
         <button
-          className="ghost"
           disabled={busy}
           onClick={() => run("Connecting", async () => setAccount(await connect()))}
         >
@@ -72,10 +70,13 @@ export function App() {
 
       <div className="wrap">
         <section className="intro">
-          <h1>Run a tab, start to finish.</h1>
+          <span className="tag">Demo on {chain.name}</span>
+          <h1>
+            Run a tab, <em className="serif">start to finish.</em>
+          </h1>
           <p>
             Use two accounts: one signs as the payer, the other opens and charges as the merchant.
-            The token is a test token anyone can mint. Network: {chain.name}.
+            The token is Demo Dollar, which anyone can mint and which supports ERC-3009.
           </p>
           <ol className="rail">
             {["Sign", "Open", "Charge and settle"].map((label, index) => (
@@ -95,7 +96,7 @@ export function App() {
         <main className="desk">
           <Payer session={session} onSigned={setCode} />
           <Merchant session={session} code={code} onCode={setCode} onOpened={setId} />
-          <Receipt session={session} id={id} onId={setId} />
+          <TabPanel session={session} id={id} onId={setId} />
         </main>
       </div>
 

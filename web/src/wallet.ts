@@ -20,10 +20,12 @@ declare global {
 }
 
 export const chain = [anvil, sepolia].find((c) => c.id === deployment.chainId) ?? anvil;
-export const tab = deployment.tab as Address;
+export const pacioli = deployment.pacioli as Address;
 export const token = deployment.token as Address;
+export const permit2 = deployment.permit2 as Address;
+export const TOKEN = { address: token, name: "Demo Dollar", version: "1" };
 export const DECIMALS = 6;
-export const SYMBOL = "tUSD";
+export const SYMBOL = "dUSD";
 
 /** Reads go through the chain's public RPC, so the page works before connecting. */
 export const reader = createPublicClient({ chain, transport: http() });
@@ -68,6 +70,13 @@ const REASONS: Record<string, string> = {
   NotMerchant: "Only the merchant of this tab can do that.",
   ExceedsHeld: "That is more than the tab still holds.",
   ExceedsCharged: "That is more than was charged.",
+  Metered: "This tab is metered: charge it with a signed receipt.",
+  NotMetered: "Receipts only settle metered tabs.",
+  StaleReceipt: "This receipt is not above the total already paid.",
+  ShortFunding: "The escrow did not receive the full limit.",
+  AuthorizationNotValid: "The funding signature has expired.",
+  AuthorizationUsed: "This funding signature was already used.",
+  InvalidSignature: "The token rejected the funding signature.",
 };
 
 /** A short, readable reason for a failed call. */

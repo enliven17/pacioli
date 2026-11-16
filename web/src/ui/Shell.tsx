@@ -1,49 +1,70 @@
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import deployment from "../deployment.json";
-import { AsciiField, WORDMARK } from "./Ascii.tsx";
 
-export const REPO = "https://github.com/enliven17/tab";
+export const REPO = "https://github.com/enliven17/pacioli";
 
-/** The mark: a bill with a torn bottom edge. */
-export function Mark({ ink = "#1c1a16", paper = "#ece5d6" }: { ink?: string; paper?: string }) {
+/** The mark: a P over the accountant's double rule, the sign that a column is closed and balanced. */
+export function Mark({ tile = "#0E1B3D", ink = "#D4FF3A", rule = "#FF5B3A" }) {
   return (
-    <svg viewBox="0 0 28 32" aria-hidden="true">
-      <path fill={ink} d="M2 1h24v27l-4 3-4-3-4 3-4-3-4 3-4-3z" />
-      <path fill="none" stroke={paper} strokeWidth="2" d="M8 9h12M8 15h12M8 21h7" />
+    <svg viewBox="0 0 48 48" aria-hidden="true">
+      <rect width="48" height="48" rx="12" fill={tile} />
+      <path
+        fill={ink}
+        fillRule="evenodd"
+        d="M13 8h12.5a9.5 9.5 0 0 1 0 19H20v6h-7zm7 6v7h5a3.5 3.5 0 0 0 0-7z"
+      />
+      <rect x="13" y="36" width="23" height="2.6" rx="1.3" fill={ink} />
+      <rect x="13" y="40.6" width="23" height="2.6" rx="1.3" fill={rule} />
     </svg>
+  );
+}
+
+export function Logo(props: { tile?: string; ink?: string; rule?: string }) {
+  return (
+    <a className="logo" href="/" aria-label="Pacioli home">
+      <Mark {...props} />
+      pacioli
+    </a>
   );
 }
 
 const LINKS = [
   { href: "/#how", label: "How it works" },
+  { href: "/#ledger", label: "The ledger" },
   { href: "/#fe", label: "Built in Fe" },
   { href: "/docs/", label: "Docs" },
   { href: "/brand/", label: "Brand" },
-  { href: REPO, label: "GitHub" },
 ];
 
 export function Nav({ current, children }: { current?: string; children?: ReactNode }) {
+  const [open, setOpen] = useState(false);
   return (
     <header className="bar">
       <div className="wrap">
-        <a className="mark" href="/" aria-label="Tab home">
-          <Mark />
-          TAB
-        </a>
-        <nav aria-label="Main">
-          {LINKS.map((link) => (
-            <a
-              key={link.href}
-              href={link.href}
-              aria-current={link.href === current ? "page" : undefined}
-            >
-              {link.label}
+        <div className="pill">
+          <Logo />
+          <nav aria-label="Main" className={open ? "open" : undefined}>
+            {LINKS.map((link) => (
+              <a
+                key={link.href}
+                href={link.href}
+                aria-current={link.href === current ? "page" : undefined}
+                onClick={() => setOpen(false)}
+              >
+                {link.label}
+              </a>
+            ))}
+          </nav>
+          <button className="ghost menu" aria-expanded={open} onClick={() => setOpen(!open)}>
+            Menu
+          </button>
+          {children ?? (
+            <a className="button" href="/app/">
+              Open the demo
             </a>
-          ))}
-        </nav>
-        {children}
+          )}
+        </div>
       </div>
-      <i className="progress" aria-hidden="true" />
     </header>
   );
 }
@@ -66,19 +87,15 @@ function Contract({ label, address }: { label: string; address: string }) {
 
 export function Footer() {
   return (
-    <footer className="foot">
-      <AsciiField color="#fbf8f1" />
+    <footer className="foot blueprint">
       <div className="wrap">
         <div className="foot-top">
-          <pre className="wordmark" aria-label="Tab">
-            {WORDMARK}
-          </pre>
-          <p>
-            Open a tab. Charge what was used. <em>Return the rest.</em>
-          </p>
+          <h2>
+            Every payment, <em className="serif">booked twice.</em>
+          </h2>
           <div className="foot-cta">
-            <a className="button" href="/app/">
-              Open the demo
+            <a className="button lime" href="/app/">
+              Open a tab
             </a>
             <a className="button ghost" href={REPO}>
               Source on GitHub
@@ -97,9 +114,9 @@ export function Footer() {
           <nav aria-label="Developers">
             <h4>Developers</h4>
             <a href="/docs/#quickstart">Quick start</a>
-            <a href="/docs/#authorization">The authorization</a>
-            <a href="/docs/#calls">Calls</a>
-            <a href="/docs/#integrate">Integrate with viem</a>
+            <a href="/docs/#funding">Funding sources</a>
+            <a href="/docs/#receipts">Metered receipts</a>
+            <a href="/docs/#calls">Calls and errors</a>
           </nav>
           <nav aria-label="Project">
             <h4>Project</h4>
@@ -113,8 +130,9 @@ export function Footer() {
               <dt>Network</dt>
               <dd>{NETWORKS[deployment.chainId]?.name ?? deployment.chainId}</dd>
             </div>
-            <Contract label="Tab" address={deployment.tab} />
-            <Contract label="Test token" address={deployment.token} />
+            <Contract label="Pacioli" address={deployment.pacioli} />
+            <Contract label="Demo Dollar" address={deployment.token} />
+            <Contract label="Permit2" address={deployment.permit2} />
             <div>
               <dt>Fe</dt>
               <dd>26.6.0</dd>

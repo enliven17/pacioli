@@ -7,50 +7,20 @@ import { createRoot } from "react-dom/client";
 import { Mark } from "../ui/Shell.tsx";
 
 createRoot(document.getElementById("root")!).render(
-  <div className="banner">
-    <div>
-      <span className="mark">
-        <Mark />
-        TAB
+  <div className="banner blueprint">
+    <div className="copy">
+      <span className="banner-logo">
+        <Mark tile="#D4FF3A" ink="#0E1B3D" rule="#FF5B3A" />
+        pacioli
       </span>
       <h1>
-        Open a tab. Charge what was used. <em>Return the rest.</em>
+        Every payment,
+        <br />
+        booked <em className="serif">twice.</em>
       </h1>
+      <p>Auth-capture escrow in Fe · Permit2 · ERC-3009 · metered receipts</p>
     </div>
-    <div className="slip">
-      <div className="paper">
-        <div className="r head">
-          <strong>TAB</strong>
-          <span>No. 0x6a28…9d38</span>
-        </div>
-        <div className="r">
-          <span>AUTHORIZED</span>
-          <span>100.00</span>
-        </div>
-        <hr />
-        <div className="r">
-          <span>charge · espresso ×2</span>
-          <span>7.00</span>
-        </div>
-        <div className="r">
-          <span>charge · lunch</span>
-          <span>24.50</span>
-        </div>
-        <div className="r">
-          <span>charge · service</span>
-          <span>11.00</span>
-        </div>
-        <hr />
-        <div className="r">
-          <span>CHARGED</span>
-          <span>42.50</span>
-        </div>
-        <div className="r total">
-          <span>RETURNED TO PAYER</span>
-          <span>57.50</span>
-        </div>
-        <em className="stamp red">Closed</em>
-      </div>
-    </div>
+    <img src="/art/hero.webp" alt="" />
+    <div className="equation">limit = held + charged + released</div>
   </div>,
 );

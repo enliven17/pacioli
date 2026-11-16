@@ -1,18 +1,27 @@
-/* Tab brand: a paper bill. Cream desk, white slips, ink, one stamp red.
+/* Pacioli brand: a ledger drawn on blueprint paper.
+   Navy paper, cobalt grid, one lime signal, coral for what leaves the books.
    The tokens below are the brand kit; /brand/ renders them. */
 :root {
-  --desk: #ece5d6;
-  --desk-deep: #e0d7c3;
-  --paper: #fbf8f1;
-  --ink: #1c1a16;
-  --faint: #7d7667;
-  --rule: #cfc7b5;
-  --stamp: #d2412a;
-  --paid: #2d6a4f;
-  --mono: "JetBrains Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+  --navy: #0e1b3d;
+  --navy-2: #172a5c;
+  --cobalt: #2a5bff;
+  --lime: #d4ff3a;
+  --coral: #ff5b3a;
+  --peach: #ffd9a8;
+  --paper: #f3f2ec;
+  --white: #ffffff;
+  --ink: #0b1020;
+  --muted: #5a6275;
+  --rule: #d9dbe3;
+  --grid: rgba(42, 91, 255, 0.09);
+  --grid-major: rgba(42, 91, 255, 0.16);
+  --grid-dark: rgba(122, 156, 255, 0.16);
+  --grid-dark-major: rgba(122, 156, 255, 0.28);
+  --display: "Bricolage Grotesque Variable", "Bricolage Grotesque", system-ui, sans-serif;
   --serif: "Instrument Serif", "Iowan Old Style", Georgia, serif;
-  --tooth: 9px;
-  --page: 1120px;
+  --mono: "JetBrains Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+  --radius: 22px;
+  --page: 1200px;
 }
 
 * {
@@ -25,11 +34,22 @@ html {
 
 body {
   margin: 0;
-  background: var(--desk);
+  background-color: var(--paper);
+  background-image:
+    linear-gradient(var(--grid-major) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid-major) 1px, transparent 1px),
+    linear-gradient(var(--grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+  background-size:
+    120px 120px,
+    120px 120px,
+    24px 24px,
+    24px 24px;
   color: var(--ink);
-  font: 14px/1.55 var(--mono);
+  font: 400 16px/1.6 var(--display);
   font-variant-numeric: tabular-nums;
   -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
 }
 
 .wrap {
@@ -42,349 +62,310 @@ a {
   color: inherit;
 }
 
-/* Navigation */
-.bar {
-  position: sticky;
-  top: 0;
-  z-index: 10;
-  background: color-mix(in srgb, var(--desk) 88%, transparent);
-  backdrop-filter: blur(8px);
-  border-bottom: 1px dashed var(--rule);
+h1,
+h2,
+h3 {
+  font-family: var(--display);
+  font-weight: 800;
+  letter-spacing: -0.035em;
+  line-height: 1;
+  margin: 0;
 }
 
-.bar .wrap {
-  display: flex;
-  align-items: center;
-  gap: 20px;
-  min-height: 64px;
+em.serif,
+.serif {
+  font-family: var(--serif);
+  font-weight: 400;
+  font-style: italic;
+  letter-spacing: -0.01em;
 }
 
-.mark {
+code,
+pre,
+.mono {
+  font-family: var(--mono);
+}
+
+/* A navy panel drawn on blueprint paper. */
+.blueprint {
+  background-color: var(--navy);
+  background-image:
+    linear-gradient(var(--grid-dark-major) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid-dark-major) 1px, transparent 1px),
+    linear-gradient(var(--grid-dark) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid-dark) 1px, transparent 1px);
+  background-size:
+    120px 120px,
+    120px 120px,
+    24px 24px,
+    24px 24px;
+  color: var(--paper);
+}
+
+/* Logo */
+.logo {
   display: inline-flex;
   align-items: center;
   gap: 10px;
-  font-weight: 800;
-  font-size: 19px;
-  letter-spacing: 0.24em;
+  font: 800 26px/1 var(--display);
+  letter-spacing: -0.045em;
   text-decoration: none;
 }
 
-.mark svg {
-  width: 21px;
-  height: 24px;
+.logo svg {
+  width: 34px;
+  height: 34px;
+  flex: none;
+}
+
+/* Navigation: a lime pill bar. */
+.bar {
+  position: sticky;
+  top: 12px;
+  z-index: 20;
+  padding: 12px 0 0;
+}
+
+.bar .pill {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-height: 64px;
+  padding: 10px 10px 10px 18px;
+  border-radius: 18px;
+  background: var(--lime);
+  box-shadow: 0 1px 0 rgba(14, 27, 61, 0.08);
 }
 
 .bar nav {
   display: flex;
-  gap: 20px;
+  gap: 4px;
   margin-left: auto;
-  font-size: 13px;
 }
 
 .bar nav a {
+  padding: 8px 12px;
+  border-radius: 10px;
+  font-weight: 600;
+  font-size: 15px;
   text-decoration: none;
-  color: var(--faint);
 }
 
 .bar nav a:hover,
 .bar nav a[aria-current="page"] {
-  color: var(--ink);
+  background: rgba(14, 27, 61, 0.08);
 }
 
-@media (max-width: 720px) {
+.bar .menu {
+  display: none;
+}
+
+@media (max-width: 860px) {
   .bar nav {
     display: none;
   }
 
-  .bar .wrap > :last-child {
+  .bar nav.open {
+    display: flex;
+    flex-direction: column;
+    position: absolute;
+    top: 84px;
+    left: 16px;
+    right: 16px;
+    padding: 10px;
+    border-radius: 18px;
+    background: var(--lime);
+  }
+
+  .bar .menu {
+    display: inline-flex;
     margin-left: auto;
   }
 }
 
-/* Buttons and fields */
+/* Buttons */
 button,
 .button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
-  padding: 10px 16px;
-  border: 1px solid var(--ink);
-  border-radius: 2px;
-  background: var(--ink);
-  color: var(--paper);
-  font: inherit;
-  font-weight: 700;
-  letter-spacing: 0.06em;
+  min-height: 46px;
+  padding: 0 20px;
+  border: 0;
+  border-radius: 12px;
+  background: var(--cobalt);
+  color: var(--white);
+  font: 700 15px/1 var(--display);
   text-decoration: none;
   cursor: pointer;
   transition:
-    transform 0.12s ease,
-    box-shadow 0.12s ease;
+    transform 0.15s ease,
+    background 0.15s ease;
 }
 
-button:not(:disabled):hover,
+button:hover:not(:disabled),
 .button:hover {
-  transform: translate(-1px, -1px);
-  box-shadow: 3px 3px 0 var(--stamp);
+  transform: translateY(-1px);
+  background: #1b47e0;
+}
+
+button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
 button.ghost,
 .button.ghost {
   background: transparent;
-  color: var(--ink);
+  color: inherit;
+  box-shadow: inset 0 0 0 1.5px currentColor;
+}
+
+button.ghost:hover:not(:disabled),
+.button.ghost:hover {
+  background: rgba(14, 27, 61, 0.06);
+}
+
+button.lime,
+.button.lime {
+  background: var(--lime);
+  color: var(--navy);
+}
+
+button.lime:hover:not(:disabled),
+.button.lime:hover {
+  background: #c4f21a;
 }
 
 button.wide {
   width: 100%;
 }
 
-button:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
+/* Tags: a lime chip with a serif label, like a ledger entry number. */
+.tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 12px 4px;
+  border-radius: 999px;
+  background: var(--lime);
+  color: var(--navy);
+  font: 400 17px/1.2 var(--serif);
 }
 
-label {
-  display: grid;
-  gap: 4px;
-  color: var(--faint);
-  font-size: 11px;
+.tag.coral {
+  background: var(--coral);
+  color: var(--white);
+}
+
+.tag.cobalt {
+  background: var(--cobalt);
+  color: var(--white);
+}
+
+/* Cards */
+.card {
+  border-radius: var(--radius);
+  background: var(--white);
+  box-shadow: 0 1px 0 var(--rule);
+}
+
+/* Dimension line: a blueprint measurement used as a section rule. */
+.dimension {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--cobalt);
+  font: 500 12px/1 var(--mono);
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
 
+.dimension::before,
+.dimension::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: currentColor;
+  opacity: 0.5;
+}
+
+/* Forms */
+label {
+  display: grid;
+  gap: 6px;
+  font-weight: 600;
+  font-size: 14px;
+}
+
 input,
-textarea {
+textarea,
+select {
   width: 100%;
-  min-width: 0;
-  padding: 9px 10px;
-  border: 1px solid var(--rule);
-  border-radius: 2px;
-  background: #fff;
+  padding: 12px 14px;
+  border: 1.5px solid var(--rule);
+  border-radius: 12px;
+  background: var(--paper);
   color: var(--ink);
-  font: inherit;
-  font-size: 13px;
-  letter-spacing: 0;
-  text-transform: none;
+  font: 400 14px/1.4 var(--mono);
+}
+
+input:focus,
+textarea:focus,
+select:focus,
+button:focus-visible,
+a:focus-visible {
+  outline: 3px solid var(--cobalt);
+  outline-offset: 2px;
 }
 
 textarea {
   resize: vertical;
-  word-break: break-all;
 }
 
-:focus-visible {
-  outline: 2px solid var(--ink);
-  outline-offset: 2px;
-}
-
-/* A slip of paper with a torn bottom edge. The shadow sits on the wrapper
-   because the mask on .paper would clip it. */
-.slip {
-  filter: drop-shadow(0 1px 0 rgb(0 0 0 / 0.06)) drop-shadow(0 14px 22px rgb(60 45 20 / 0.12));
-}
-
-.paper {
-  display: grid;
-  gap: 14px;
-  padding: 22px 20px calc(26px + var(--tooth));
-  background: var(--paper);
-  mask: conic-gradient(from -45deg at bottom, #0000, #000 1deg 89deg, #0000 90deg) 50% /
-    calc(2 * var(--tooth)) 100%;
-}
-
-.paper h2,
-.paper h3 {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin: 0;
-  padding-bottom: 12px;
-  border-bottom: 1px dashed var(--rule);
-  font-size: 15px;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-}
-
-.paper h2 span,
-.paper h3 span {
-  color: var(--faint);
-  font-weight: 400;
-}
-
-.hint {
-  margin: 0;
-  color: var(--faint);
-  font-size: 12px;
-}
-
-.hint.bad {
-  color: var(--stamp);
-}
-
-.stamp {
-  display: inline-block;
-  margin-left: auto;
-  padding: 1px 8px;
-  border: 2px solid currentColor;
-  border-radius: 3px;
-  font-style: normal;
-  font-size: 11px;
-  font-weight: 800;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-  transform: rotate(-4deg);
-  color: var(--paid);
-}
-
-.stamp.expired,
-.stamp.red {
-  color: var(--stamp);
-}
-
-.stamp.closed {
-  color: var(--faint);
-}
-
-/* Line items with dotted leaders between label and value. */
-.lines {
-  display: grid;
-  gap: 4px;
-  margin: 0;
-}
-
-.lines div {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-}
-
-.lines dt {
-  color: var(--faint);
-}
-
-.lines dd {
-  flex: 1;
-  display: flex;
-  gap: 8px;
-  margin: 0;
-  justify-content: flex-end;
-  white-space: nowrap;
-}
-
-.lines dd::before {
-  content: "";
-  flex: 1;
-  border-bottom: 1px dotted var(--rule);
-  transform: translateY(-4px);
-}
-
-.lines.sum {
-  padding-top: 12px;
-  border-top: 1px dashed var(--rule);
-}
-
-.lines .total {
-  margin-top: 6px;
-  font-size: 16px;
-  font-weight: 800;
-}
-
-.lines .total dt {
-  color: var(--ink);
-}
-
-.pair {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 10px;
-  align-items: end;
-}
-
-/* A canvas of drifting printer characters; fills its positioned parent. */
-.ascii {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  pointer-events: none;
-}
-
-/* Footer: ink, with the character field behind it. */
+/* Footer */
 .foot {
-  position: relative;
-  margin-top: 96px;
-  overflow: hidden;
-  background: var(--ink);
-  color: var(--paper);
-  font-size: 13px;
-}
-
-/* Strongest in the top right corner, away from the text. */
-.foot .ascii {
-  opacity: 0.42;
-  mask-image: radial-gradient(110% 95% at 100% 0, #000 28%, transparent 72%);
-}
-
-.foot .wrap {
-  position: relative;
-  padding-top: 72px;
-  padding-bottom: 28px;
-}
-
-.foot a {
-  text-decoration: none;
+  margin-top: 120px;
+  padding: 72px 0 32px;
 }
 
 .foot-top {
   display: grid;
-  gap: 18px;
-  justify-items: start;
-  padding-bottom: 56px;
+  grid-template-columns: 1.3fr 1fr;
+  gap: 40px;
+  align-items: end;
+  padding-bottom: 48px;
+  border-bottom: 1px solid var(--grid-dark-major);
 }
 
-.wordmark {
-  margin: 0;
-  color: var(--paper);
-  font: 700 clamp(9px, 1.9vw, 18px) / 1.14 var(--mono);
-  letter-spacing: 0;
-  white-space: pre;
+.foot-top h2 {
+  font-size: clamp(40px, 6vw, 76px);
 }
 
-.foot-top p {
-  margin: 0;
-  font-family: var(--serif);
-  font-size: clamp(26px, 3.4vw, 40px);
-  line-height: 1.1;
-}
-
-.foot-top em {
-  color: var(--stamp);
+.foot-top h2 em {
+  color: var(--lime);
 }
 
 .foot-cta {
   display: flex;
   flex-wrap: wrap;
-  gap: 12px;
-}
-
-.foot .button {
-  border-color: var(--paper);
-  background: var(--paper);
-  color: var(--ink);
-}
-
-.foot .button.ghost {
-  background: transparent;
-  color: var(--paper);
+  gap: 10px;
+  justify-content: flex-end;
 }
 
 .foot-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr)) minmax(240px, 1.3fr);
+  grid-template-columns: repeat(3, 1fr) 1.4fr;
   gap: 32px;
-  padding: 32px 0;
-  border-top: 1px dashed #4a463c;
+  padding: 40px 0;
+}
+
+.foot-grid h4 {
+  margin: 0 0 12px;
+  color: var(--lime);
+  font: 400 18px/1 var(--serif);
 }
 
 .foot-grid nav {
@@ -393,158 +374,70 @@ textarea {
   align-content: start;
 }
 
-.foot-grid h4 {
-  margin: 0 0 6px;
-  color: #8f8876;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-}
-
 .foot-grid nav a {
-  color: #d8d1c0;
-  transition: color 0.15s ease;
+  text-decoration: none;
+  opacity: 0.85;
 }
 
 .foot-grid nav a:hover {
-  color: var(--stamp);
+  opacity: 1;
+  text-decoration: underline;
 }
 
-/* The deployment, set like the last lines of a bill. */
 .foot-slip {
-  display: grid;
-  gap: 6px;
-  align-content: start;
   margin: 0;
-  padding: 16px;
-  border: 1px dashed #4a463c;
-  background: rgb(251 248 241 / 0.04);
+  padding: 18px 20px;
+  border-radius: 16px;
+  border: 1px dashed var(--grid-dark-major);
+  font: 400 13px/1.4 var(--mono);
 }
 
 .foot-slip div {
   display: flex;
   justify-content: space-between;
-  gap: 16px;
+  gap: 12px;
+  padding: 6px 0;
 }
 
 .foot-slip dt {
-  color: #8f8876;
+  opacity: 0.65;
 }
 
 .foot-slip dd {
   margin: 0;
 }
 
-.foot-slip a {
-  border-bottom: 1px dotted currentColor;
-}
-
 .foot-end {
   display: flex;
   flex-wrap: wrap;
   justify-content: space-between;
-  gap: 8px 24px;
-  padding-top: 20px;
-  border-top: 1px dashed #4a463c;
-  color: #8f8876;
-  font-size: 12px;
+  gap: 12px;
+  padding-top: 24px;
+  border-top: 1px solid var(--grid-dark-major);
+  font: 400 12px/1.4 var(--mono);
+  opacity: 0.7;
 }
 
 @media (max-width: 860px) {
+  .foot-top,
   .foot-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: 1fr 1fr;
   }
 
+  .foot-top > *,
   .foot-slip {
     grid-column: 1 / -1;
   }
-}
 
-/* Reading progress along the bottom of the bar, driven by scroll position. */
-.progress {
-  display: none;
-}
-
-@supports (animation-timeline: scroll()) {
-  .progress {
-    display: block;
-    position: absolute;
-    inset: auto 0 -1px 0;
-    height: 2px;
-    background: var(--stamp);
-    transform: scaleX(0);
-    transform-origin: left;
-    animation: grow linear both;
-    animation-timeline: scroll(root);
-  }
-}
-
-@keyframes grow {
-  to {
-    transform: scaleX(1);
-  }
-}
-
-/* Reveal on scroll. Only hidden once the script has marked the page. */
-.js [data-reveal] {
-  opacity: 0;
-  transform: translateY(18px);
-  transition:
-    opacity 0.6s ease,
-    transform 0.6s cubic-bezier(0.2, 0.7, 0.2, 1);
-}
-
-.js [data-reveal].in {
-  opacity: 1;
-  transform: none;
-}
-
-/* Page changes: the old page lifts away and the new one feeds in like paper.
-   The bar keeps its place. */
-@view-transition {
-  navigation: auto;
-}
-
-.bar {
-  view-transition-name: bar;
-}
-
-::view-transition-old(root) {
-  animation: leave 0.22s ease-in both;
-}
-
-::view-transition-new(root) {
-  animation: feed 0.42s cubic-bezier(0.2, 0.7, 0.2, 1) both;
-}
-
-@keyframes leave {
-  to {
-    opacity: 0;
-    transform: translateY(-14px);
-  }
-}
-
-@keyframes feed {
-  from {
-    opacity: 0;
-    transform: translateY(28px);
+  .foot-cta {
+    justify-content: flex-start;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .js [data-reveal] {
-    opacity: 1;
-    transform: none;
-    transition: none;
-  }
-
-  ::view-transition-old(root),
-  ::view-transition-new(root) {
-    animation: none;
-  }
-
-  html {
-    scroll-behavior: auto;
+  * {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto !important;
   }
 }

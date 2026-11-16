@@ -33,6 +33,10 @@ export const pacioliAbi = parseAbi([
   "error NotMetered()",
   "error StaleReceipt()",
   "error ShortFunding()",
+  // Bubbled from the token during `openWithErc3009`.
+  "error AuthorizationNotValid()",
+  "error AuthorizationUsed()",
+  "error InvalidSignature()",
 ]);
 
 export const tokenAbi = parseAbi([

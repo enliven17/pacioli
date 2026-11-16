@@ -1,180 +1,143 @@
 import { Footer, Mark, Nav } from "../ui/Shell.tsx";
 
 const COLORS = [
-  { name: "Desk", token: "--desk", hex: "#ECE5D6", use: "Page background" },
-  { name: "Paper", token: "--paper", hex: "#FBF8F1", use: "Slips and cards" },
-  { name: "Ink", token: "--ink", hex: "#1C1A16", use: "Text, buttons, the mark", light: true },
-  { name: "Faint", token: "--faint", hex: "#7D7667", use: "Labels and secondary text", light: true },
-  { name: "Rule", token: "--rule", hex: "#CFC7B5", use: "Dashed rules and borders" },
-  { name: "Stamp", token: "--stamp", hex: "#D2412A", use: "The one accent. Use it sparingly.", light: true },
-  { name: "Paid", token: "--paid", hex: "#2D6A4F", use: "Open and settled states", light: true },
+  { name: "Blueprint navy", hex: "#0E1B3D", use: "Paper for drawings, headings, the total row", ink: "#F3F2EC" },
+  { name: "Cobalt", hex: "#2A5BFF", use: "Actions, grid lines, links", ink: "#FFFFFF" },
+  { name: "Signal lime", hex: "#D4FF3A", use: "The one highlight: nav, tags, the double rule", ink: "#0E1B3D" },
+  { name: "Coral", hex: "#FF5B3A", use: "What leaves the books: errors, refunds", ink: "#FFFFFF" },
+  { name: "Peach", hex: "#FFD9A8", use: "Paper slips inside illustrations", ink: "#0E1B3D" },
+  { name: "Drafting paper", hex: "#F3F2EC", use: "Page background under the grid", ink: "#0E1B3D" },
 ];
 
-const LOGOS = [
-  { file: "tab-mark.svg", label: "Mark", ink: "#1c1a16", paper: "#ece5d6", bg: "var(--desk-deep)" },
-  { file: "tab-mark-inverse.svg", label: "Mark, inverse", ink: "#fbf8f1", paper: "#1c1a16", bg: "var(--ink)" },
-  { file: "tab-mark-stamp.svg", label: "Mark, stamp", ink: "#d2412a", paper: "#fbf8f1", bg: "var(--paper)" },
+const ART = ["hero", "sign", "vault", "balance", "meter", "stamp", "envelope", "witness", "portrait"];
+
+const VOICE: [string, string][] = [
+  ["The rest goes back to the payer.", "Seamless refunds powered by smart escrow."],
+  ["One signature opens the tab.", "Frictionless one-click onboarding."],
+  ["The books balance after every call.", "Bank-grade security you can trust."],
 ];
 
 export function Brand() {
   return (
     <>
-      <Nav current="/brand/">
-        <a className="button" href="/app/">
-          Open the demo
-        </a>
-      </Nav>
-
-      <main className="wrap kit">
-        <h1>A bill, not a bank.</h1>
-        <p className="lede">
-          Tab looks like the slip of paper a waiter leaves on the table: cream paper, printed ink,
-          dashed rules, and one red stamp. It should feel exact and a little warm, never glossy.
-        </p>
+      <Nav current="/brand/" />
+      <main className="wrap brand">
+        <section className="brand-hero">
+          <span className="tag">Brand kit</span>
+          <h1>
+            A ledger, drawn <em className="serif">on blueprint paper.</em>
+          </h1>
+          <p>
+            Pacioli is named for the mathematician who first printed double-entry bookkeeping. The
+            brand pairs an accountant's ledger with an engineer's drawing: exact, ruled, and a little
+            bit loud.
+          </p>
+        </section>
 
         <section>
           <h2>Logo</h2>
           <p className="note">
-            The mark is a bill with a torn bottom edge. The wordmark is TAB in JetBrains Mono
-            ExtraBold, tracked out by 0.24em. Keep one mark-height of clear space around it.
+            The mark is a P over the accountant's double rule: the line drawn under a column once it
+            balances. The upper rule is lime, the lower coral.
           </p>
-          <div className="logos">
-            <div className="tile lockup">
-              <span className="mark big">
-                <Mark />
-                TAB
+          <div className="logo-grid">
+            <div className="tile blueprint">
+              <span className="big-logo">
+                <Mark tile="#D4FF3A" ink="#0E1B3D" />
+                <b>pacioli</b>
               </span>
-              <a href="/brand/tab-lockup.svg" download>
-                Lockup · SVG
-              </a>
             </div>
-            {LOGOS.map((logo) => (
-              <div className="tile" key={logo.file} style={{ background: logo.bg }}>
-                <span className="glyph">
-                  <Mark ink={logo.ink} paper={logo.paper} />
-                </span>
-                <a
-                  href={`/brand/${logo.file}`}
-                  download
-                  style={{ color: logo.bg === "var(--ink)" ? "#fbf8f1" : undefined }}
-                >
-                  {logo.label} · SVG
-                </a>
+            <div className="tile lime-tile">
+              <span className="big-logo">
+                <Mark />
+                <b>pacioli</b>
+              </span>
+            </div>
+            <div className="tile paper-tile">
+              <span className="big-logo">
+                <Mark tile="#2A5BFF" ink="#FFFFFF" rule="#D4FF3A" />
+                <b>pacioli</b>
+              </span>
+            </div>
+            <div className="tile construction">
+              <div className="mark-xl">
+                <Mark />
+                <i className="m h" />
+                <i className="m v" />
               </div>
-            ))}
+              <small>Clear space: one rule height on every side. Minimum size 20 px.</small>
+            </div>
+          </div>
+          <div className="downloads">
+            <a className="button ghost" href="/favicon.svg" download>
+              Mark (SVG)
+            </a>
+            <a className="button ghost" href="/og.png" download>
+              Social card (PNG)
+            </a>
+            <a className="button ghost" href="/banner/">
+              README banner
+            </a>
           </div>
         </section>
 
         <section>
           <h2>Color</h2>
-          <p className="note">
-            Mostly paper and ink. Stamp red marks one thing per view: a state, a number, an
-            emphasis. Green appears only for open or settled tabs.
-          </p>
           <div className="swatches">
-            {COLORS.map((color) => (
-              <div className="swatch" key={color.name}>
-                <div
-                  className="chip"
-                  style={{ background: `var(${color.token})`, color: color.light ? "#fbf8f1" : "#1c1a16" }}
-                >
-                  {color.hex}
-                </div>
-                <strong>{color.name}</strong>
-                <code>{color.token}</code>
-                <span>{color.use}</span>
-              </div>
+            {COLORS.map((c) => (
+              <article key={c.hex} style={{ background: c.hex, color: c.ink }}>
+                <b>{c.name}</b>
+                <code>{c.hex}</code>
+                <small>{c.use}</small>
+              </article>
             ))}
           </div>
         </section>
 
         <section>
           <h2>Type</h2>
-          <div className="type">
-            <div>
-              <p className="specimen serif">Return the rest.</p>
-              <p className="note">
-                <strong>Instrument Serif</strong> · headlines only, regular weight, tight leading.
-                Italic for the one phrase that matters.
-              </p>
-            </div>
-            <div>
-              <p className="specimen mono">CHARGED 42.50</p>
-              <p className="note">
-                <strong>JetBrains Mono</strong> · everything else: body, labels, numbers. Tabular
-                figures always. Labels are uppercase, 11px, tracked 0.08em.
-              </p>
-            </div>
+          <div className="type-grid">
+            <article className="card">
+              <small>Display and text · Bricolage Grotesque</small>
+              <p className="type-display">Every payment, booked twice.</p>
+            </article>
+            <article className="card">
+              <small>Accent · Instrument Serif Italic</small>
+              <p className="type-serif">what you signed for.</p>
+            </article>
+            <article className="card">
+              <small>Numbers and code · JetBrains Mono</small>
+              <p className="type-mono">held 57.50 + charged 42.50 = 100.00</p>
+            </article>
           </div>
         </section>
 
         <section>
-          <h2>Elements</h2>
-          <div className="elements">
-            <div className="slip">
-              <div className="paper">
-                <h3>
-                  <span>03</span> The tab <em className="stamp">Open</em>
-                </h3>
-                <dl className="lines">
-                  <div>
-                    <dt>Charged</dt>
-                    <dd>42.50</dd>
-                  </div>
-                  <div>
-                    <dt>Refunded</dt>
-                    <dd>−2.50</dd>
-                  </div>
-                  <div className="total">
-                    <dt>Still held</dt>
-                    <dd>57.50 tUSD</dd>
-                  </div>
-                </dl>
-              </div>
-            </div>
-            <div className="stack">
-              <div className="row">
-                <button>Primary</button>
-                <button className="ghost">Secondary</button>
-              </div>
-              <div className="row">
-                <em className="stamp">Open</em>
-                <em className="stamp closed">Closed</em>
-                <em className="stamp expired">Expired</em>
-              </div>
-              <label>
-                Field label
-                <input defaultValue="25.00" />
-              </label>
-              <p className="note">
-                Slips have a torn bottom edge and a soft shadow. Rules are dashed. Line items use
-                dotted leaders. Corners are 2px; nothing is rounded more than a stamp.
-              </p>
-            </div>
+          <h2>Illustration</h2>
+          <p className="note">
+            Bold ink outlines, halftone shading and the six brand colors, annotated like a technical
+            drawing: dimension lines, center marks, construction circles. No text inside pictures.
+          </p>
+          <div className="art-grid">
+            {ART.map((name) => (
+              <img key={name} src={`/art/${name}.webp`} alt={name} loading="lazy" className={name} />
+            ))}
           </div>
         </section>
 
         <section>
           <h2>Voice</h2>
+          <p className="note">Say what the contract does. Short sentences, real numbers, no hype.</p>
           <div className="voice">
-            <div>
-              <strong>Say</strong>
-              <p>Open a tab. Charge what was used. Return the rest.</p>
-              <p>The merchant can only take what it charges.</p>
-            </div>
-            <div>
-              <strong>Not</strong>
-              <p>Revolutionizing the future of decentralized payments.</p>
-              <p>Seamless, trustless, next-generation escrow infrastructure.</p>
-            </div>
+            {VOICE.map(([yes, no]) => (
+              <div key={yes}>
+                <p className="yes">{yes}</p>
+                <p className="no">{no}</p>
+              </div>
+            ))}
           </div>
-          <p className="note">
-            Short sentences. Plain verbs: open, charge, close, return. Numbers always with two
-            decimals. Say what happens to the money.
-          </p>
         </section>
       </main>
-
       <Footer />
     </>
   );
