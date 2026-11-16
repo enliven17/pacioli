@@ -7,6 +7,7 @@
     "build": "tsc --noEmit && vite build",
     "deploy": "node --env-file-if-exists=.env scripts/deploy.ts",
     "e2e": "node scripts/e2e.ts",
+    "scenarios": "node scripts/scenarios.ts",
     "smoke": "node --env-file-if-exists=.env scripts/smoke.ts"
   },
   "engines": {

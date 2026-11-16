@@ -169,6 +169,8 @@ The tests cover:
 - **Invariants**: seeded random sequences of charges, refunds and receipts, with the ledger rule and every token balance checked after each step.
 - **Typed-data vectors**: the authorization struct hash, digest and signature, the receipt digest and the Permit2 witness digest, computed by viem from `web/src/pacioli.ts` (`node web/scripts/vectors.ts`). `cast wallet sign --data` gives the same signature and `cast keccak` over `cast abi-encode` the same struct hash.
 
+`pnpm run scenarios` runs **100 seeded scenarios** on Anvil against the same deployment, real Permit2 included. 43 of them target one failure each and must revert with the exact error: every access rule, both deadlines, stale, foreign and oversized receipts, double opens, and a merchant who edits the signed limit, metering or deadline under each funding source (rejected by Pacioli, the token or Permit2). The other 57 are random walks of charges, receipts and refunds over every funding source and tab type, ending in `close`, in `reclaim` after a time jump, or left open. A reference model predicts every step; the ledger, the invariants and both parties' token balances are checked against it after each one. `SEED=7 pnpm run scenarios` draws a different set of walks.
+
 `pnpm run e2e` then runs all three sources on Anvil with the **real Permit2 bytecode** (`deploy.ts` copies it from Sepolia to the canonical address): allowance with charges, close and refund; ERC-3009 with signed receipts; Permit2 with a charge, a time jump and `reclaim`. It checks the books after each.
 
 ## Demo
@@ -193,6 +195,7 @@ fe build
 cd web && pnpm install
 pnpm run deploy            # Pacioli, Demo Dollar, and Permit2 on Anvil
 pnpm run e2e               # every funding source, receipts, reclaim
+pnpm run scenarios         # 100 seeded scenarios checked against a model
 pnpm dev                   # landing, demo, docs, brand kit
 ```
 
