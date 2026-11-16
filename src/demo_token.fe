@@ -1,6 +1,20 @@
 // A test token for the demo deployment. Anyone can mint; it has no value.
+//
+// It implements ERC-3009 `receiveWithAuthorization`, so a payer can fund a
+// tab with one signature and no approval, as with USDC.
 
-use std::evm::StorageMap
+use core::keccak
+use std::abi::Bytes32
+use std::evm::{StorageMap, signature}
+use std::evm::crypto::keccak_words
+use std::evm::eip712::Domain
+
+pub const TOKEN_NAME_HASH: u256 = keccak("Demo Dollar")
+pub const TOKEN_VERSION_HASH: u256 = keccak("1")
+
+pub const RECEIVE_TYPEHASH: u256 = keccak(
+    "ReceiveWithAuthorization(address from,address to,uint256 value,uint256 validAfter,uint256 validBefore,bytes32 nonce)",
+)
 
 pub msg TokenMsg {
     #[selector = sol("decimals()")]
@@ -17,7 +31,35 @@ pub msg TokenMsg {
     TransferFrom { from: Address, to: Address, amount: u256 } -> bool,
     #[selector = sol("mint(address,uint256)")]
     Mint { to: Address, amount: u256 },
+    #[selector = sol(
+        "receiveWithAuthorization(address,address,uint256,uint256,uint256,bytes32,bytes)",
+    )]
+    ReceiveWithAuthorization {
+        from: Address,
+        to: Address,
+        value: u256,
+        valid_after: u256,
+        valid_before: u256,
+        nonce: Bytes32,
+        signature: Bytes,
+    },
+    #[selector = sol("authorizationState(address,bytes32)")]
+    AuthorizationState { authorizer: Address, nonce: Bytes32 } -> bool,
+    #[selector = sol("DOMAIN_SEPARATOR()")]
+    DomainSeparator -> u256,
 }
+
+#[error]
+pub struct NotPayee {}
+
+#[error]
+pub struct AuthorizationNotValid {}
+
+#[error]
+pub struct AuthorizationUsed {}
+
+#[error]
+pub struct InvalidSignature {}
 
 #[event]
 struct Transfer {
@@ -37,9 +79,42 @@ struct Approval {
     value: u256,
 }
 
-pub contract DemoToken uses (ctx: Ctx, log: mut Log) {
+#[event]
+struct AuthorizationUsedEvent {
+    #[indexed]
+    authorizer: Address,
+    #[indexed]
+    nonce: u256,
+}
+
+/// EIP-712 struct hash of an ERC-3009 `ReceiveWithAuthorization`.
+pub fn receive_hash(
+    from: Address,
+    to: Address,
+    value: u256,
+    valid_after: u256,
+    valid_before: u256,
+    nonce: u256,
+) -> u256 {
+    keccak_words(
+        [RECEIVE_TYPEHASH, from.word(), to.word(), value, valid_after, valid_before, nonce],
+    )
+}
+
+pub contract DemoToken uses (ctx: Ctx, call: mut Call, log: mut Log) {
+    domain: Domain,
     mut balances: StorageMap<Address, u256>,
     mut allowances: StorageMap<(Address, Address), u256>,
+    mut used: StorageMap<(Address, u256), bool>,
+
+    init()
+    uses (mut domain, ctx)
+    {
+        domain = Domain::new(
+            name_hash: TOKEN_NAME_HASH,
+            version_hash: TOKEN_VERSION_HASH,
+        )
+    }
 
     recv TokenMsg {
         Decimals -> u8 {
@@ -88,6 +163,55 @@ pub contract DemoToken uses (ctx: Ctx, log: mut Log) {
         Mint { to, amount } uses (mut balances, mut log) {
             balances.set(key: to, value: balances.get(key: to) + amount)
             log.emit(Transfer { from: Address::zero(), to, value: amount })
+        }
+
+        // ERC-3009: only the payee may submit, so a front-runner cannot
+        // spend the authorization before the payee's own call.
+        ReceiveWithAuthorization { from, to, value, valid_after, valid_before, nonce, signature }
+        uses (ctx, call, domain, mut balances, mut used, mut log)
+        {
+            if ctx.caller() != to {
+                revert_error(NotPayee {})
+            }
+            let now = ctx.timestamp().as_seconds()
+            if now <= valid_after || now >= valid_before {
+                revert_error(AuthorizationNotValid {})
+            }
+            if used.get(key: (from, nonce.val)) {
+                revert_error(AuthorizationUsed {})
+            }
+            let digest = domain
+                .digest(
+                    struct_hash: receive_hash(
+                        from,
+                        to,
+                        value,
+                        valid_after,
+                        valid_before,
+                        nonce: nonce.val,
+                    ),
+                )
+            if !signature::is_valid_signature_now(from, digest, signature: signature.span()) {
+                revert_error(InvalidSignature {})
+            }
+
+            used.set(key: (from, nonce.val), value: true)
+            balances.set(key: from, value: balances.get(key: from) - value)
+            balances.set(key: to, value: balances.get(key: to) + value)
+            log.emit(
+                AuthorizationUsedEvent { authorizer: from, nonce: nonce.val },
+            )
+            log.emit(Transfer { from, to, value })
+        }
+
+        AuthorizationState { authorizer, nonce } -> bool
+        uses (used)
+        {
+            used.get(key: (authorizer, nonce.val))
+        }
+
+        DomainSeparator -> u256 uses (ctx, domain) {
+            domain.separator()
         }
     }
 }

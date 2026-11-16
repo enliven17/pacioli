@@ -1,0 +1,58 @@
+// The typed data a payer signs.
+//
+// An `Authorization` opens a tab. A `Receipt` lets the merchant of a metered
+// tab charge up to a running total the payer has signed for.
+
+use core::keccak
+use std::evm::crypto::keccak_words
+
+pub const NAME_HASH: u256 = keccak("Pacioli")
+pub const VERSION_HASH: u256 = keccak("1")
+
+pub const AUTHORIZATION_TYPEHASH: u256 = keccak(
+    "Authorization(address payer,address merchant,address token,uint256 limit,uint256 openBy,uint256 captureBy,bool metered,uint256 nonce)",
+)
+
+pub const RECEIPT_TYPEHASH: u256 = keccak("Receipt(bytes32 tab,uint256 total)")
+
+/// The terms of a tab as the payer signs them.
+///
+/// A metered tab can only be charged against receipts the payer signs, so
+/// the merchant never takes more than the payer has acknowledged.
+#[abi]
+pub struct Authorization {
+    pub payer: Address,
+    pub merchant: Address,
+    pub token: Address,
+    pub limit: u256,
+    pub open_by: Timestamp,
+    pub capture_by: Timestamp,
+    pub metered: bool,
+    pub nonce: u256,
+}
+
+impl Copy for Authorization {}
+
+impl Authorization {
+    /// EIP-712 struct hash.
+    pub fn hash(self) -> u256 {
+        keccak_words(
+            [
+                AUTHORIZATION_TYPEHASH,
+                self.payer.word(),
+                self.merchant.word(),
+                self.token.word(),
+                self.limit,
+                self.open_by.as_seconds(),
+                self.capture_by.as_seconds(),
+                if self.metered { 1 } else { 0 },
+                self.nonce,
+            ],
+        )
+    }
+}
+
+/// EIP-712 struct hash of a receipt for `total` on tab `id`.
+pub fn receipt_hash(id: u256, total: u256) -> u256 {
+    keccak_words([RECEIPT_TYPEHASH, id, total])
+}

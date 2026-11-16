@@ -1,62 +1,41 @@
-// Tab: auth-capture payments.
+// Pacioli: auth-capture payments kept as a double-entry ledger.
 //
 // A payer signs one EIP-712 authorization. Opening the tab moves the
-// authorized limit into escrow. The merchant can then charge the tab in parts
-// until `capture_by`, close it to release the rest, and refund what it has
-// charged. After `capture_by` anyone can return the remainder to the payer.
+// authorized limit into escrow from one of three funding sources. The
+// merchant then charges the tab in parts until `capture_by`, closes it to
+// release the rest, and refunds what it has charged. After `capture_by`
+// anyone can release the remainder to the payer.
+//
+// Every tab keeps four accounts, and every movement posts to two of them:
+//
+//     limit = held + charged + released        refunded <= charged
+//
+// A metered tab can only be charged against receipts the payer signs, so the
+// merchant never takes more than the payer has acknowledged.
 
-use core::keccak
-use std::evm::{StorageMap, erc20, signature}
-use std::evm::crypto::keccak_words
+use std::evm::StorageMap
 use std::evm::eip712::Domain
+use std::evm::signature
+use ingot::authorization::{Authorization, NAME_HASH, VERSION_HASH, receipt_hash}
+use ingot::funding::{Allowance, BadSignature, Erc3009, Funding, Permit2}
 
-pub const NAME_HASH: u256 = keccak("Tab")
-pub const VERSION_HASH: u256 = keccak("1")
-
-pub const AUTHORIZATION_TYPEHASH: u256 = keccak(
-    "Authorization(address payer,address merchant,address token,uint256 limit,uint256 openBy,uint256 captureBy,uint256 nonce)",
-)
-
-/// EIP-712 struct hash of an authorization.
-pub fn authorization_hash(
-    payer: Address,
-    merchant: Address,
-    token: Address,
-    limit: u256,
-    open_by: Timestamp,
-    capture_by: Timestamp,
-    nonce: u256,
-) -> u256 {
-    keccak_words(
-        [
-            AUTHORIZATION_TYPEHASH,
-            payer.word(),
-            merchant.word(),
-            token.word(),
-            limit,
-            open_by.as_seconds(),
-            capture_by.as_seconds(),
-            nonce,
-        ],
-    )
-}
-
-msg TabMsg {
+pub msg PacioliMsg {
     #[selector = sol(
-        "open(address,address,address,uint256,uint256,uint256,uint256,bytes)",
+        "open((address,address,address,uint256,uint256,uint256,bool,uint256),bytes)",
     )]
-    Open {
-        payer: Address,
-        merchant: Address,
-        token: Address,
-        limit: u256,
-        open_by: Timestamp,
-        capture_by: Timestamp,
-        nonce: u256,
-        signature: Bytes,
-    } -> u256,
+    Open { auth: Authorization, signature: Bytes } -> u256,
+    #[selector = sol(
+        "openWithErc3009((address,address,address,uint256,uint256,uint256,bool,uint256),bytes)",
+    )]
+    OpenWithErc3009 { auth: Authorization, signature: Bytes } -> u256,
+    #[selector = sol(
+        "openWithPermit2((address,address,address,uint256,uint256,uint256,bool,uint256),bytes)",
+    )]
+    OpenWithPermit2 { auth: Authorization, signature: Bytes } -> u256,
     #[selector = sol("charge(uint256,uint256)")]
     Charge { id: u256, amount: u256 },
+    #[selector = sol("settle(uint256,uint256,bytes)")]
+    Settle { id: u256, total: u256, signature: Bytes },
     #[selector = sol("close(uint256)")]
     Close { id: u256 },
     #[selector = sol("reclaim(uint256)")]
@@ -64,25 +43,17 @@ msg TabMsg {
     #[selector = sol("refund(uint256,uint256)")]
     Refund { id: u256, amount: u256 },
     #[selector = sol(
-        "digest(address,address,address,uint256,uint256,uint256,uint256)",
+        "digest((address,address,address,uint256,uint256,uint256,bool,uint256))",
     )]
-    Digest {
-        payer: Address,
-        merchant: Address,
-        token: Address,
-        limit: u256,
-        open_by: Timestamp,
-        capture_by: Timestamp,
-        nonce: u256,
-    } -> u256,
+    Digest { auth: Authorization } -> u256,
+    #[selector = sol("receiptDigest(uint256,uint256)")]
+    ReceiptDigest { id: u256, total: u256 } -> u256,
     #[selector = sol("terms(uint256)")]
-    TermsOf { id: u256 } -> (Address, Address, Address, Timestamp),
-    #[selector = sol("held(uint256)")]
-    Held { id: u256 } -> u256,
-    #[selector = sol("charged(uint256)")]
-    Charged { id: u256 } -> u256,
-    #[selector = sol("refunded(uint256)")]
-    Refunded { id: u256 } -> u256,
+    TermsOf { id: u256 } -> (Address, Address, Address, Timestamp, bool),
+    #[selector = sol("accounts(uint256)")]
+    Accounts { id: u256 } -> (u256, u256, u256, u256, u256),
+    #[selector = sol("permit2()")]
+    Permit2Address -> Address,
 }
 
 #[error]
@@ -101,9 +72,6 @@ pub struct NoMerchant {}
 pub struct AlreadyOpen {}
 
 #[error]
-pub struct BadSignature {}
-
-#[error]
 pub struct NotMerchant {}
 
 #[error]
@@ -111,6 +79,18 @@ pub struct ExceedsHeld {}
 
 #[error]
 pub struct ExceedsCharged {}
+
+#[error]
+pub struct Metered {}
+
+#[error]
+pub struct NotMetered {}
+
+#[error]
+pub struct StaleReceipt {}
+
+#[error]
+pub struct ShortFunding {}
 
 #[event]
 struct Opened {
@@ -123,10 +103,11 @@ struct Opened {
     token: Address,
     limit: u256,
     capture_by: Timestamp,
+    metered: bool,
 }
 
 #[event]
-struct ChargedTab {
+struct Charged {
     #[indexed]
     id: u256,
     amount: u256,
@@ -140,83 +121,137 @@ struct Released {
 }
 
 #[event]
-struct RefundedTab {
+struct Refunded {
     #[indexed]
     id: u256,
     amount: u256,
 }
 
 /// The terms of a tab, written once when it is opened.
-struct Terms { payer: Address, merchant: Address, token: Address, capture_by: Timestamp }
+struct Terms {
+    payer: Address,
+    merchant: Address,
+    token: Address,
+    limit: u256,
+    capture_by: Timestamp,
+    metered: bool,
+}
 
 impl Copy for Terms {}
 
-pub contract Tab uses (ctx: Ctx, call: mut Call, log: mut Log) {
+msg BalanceMsg {
+    #[selector = sol("balanceOf(address)")]
+    BalanceOf { account: Address } -> u256,
+}
+
+fn balance_of(token: Address, account: Address) -> u256 uses (call: Call) {
+    token.static(BalanceMsg::BalanceOf { account })
+}
+
+/// Pulls the limit from `source` and checks that the escrow received all of
+/// it, which rules out fee-on-transfer tokens and tokens without code.
+fn fund<F: Funding>(_ source: F, auth: Authorization, id: u256)
+uses (ctx: Ctx, call: mut Call)
+{
+    let escrow = ctx.address()
+    let before = balance_of(token: auth.token, account: escrow)
+    source.collect(auth, id, escrow)
+    if balance_of(token: auth.token, account: escrow) - before != auth.limit {
+        revert_error(ShortFunding {})
+    }
+}
+
+/// Checks the terms before anything moves.
+fn admit(auth: Authorization) uses (ctx: Ctx) {
+    if ctx.timestamp() > auth.open_by {
+        revert_error(Expired {})
+    }
+    if auth.limit == 0 {
+        revert_error(ZeroAmount {})
+    }
+    if auth.merchant == Address::zero() {
+        revert_error(NoMerchant {})
+    }
+}
+
+pub contract Pacioli uses (ctx: Ctx, call: mut Call, log: mut Log) {
     domain: Domain,
+    permit2: Address,
     mut terms: StorageMap<u256, Terms>,
     mut held: StorageMap<u256, u256>,
     mut charged: StorageMap<u256, u256>,
+    mut released: StorageMap<u256, u256>,
     mut refunded: StorageMap<u256, u256>,
 
-    init()
-    uses (mut domain, ctx)
+    init(permit2_address: Address)
+    uses (mut domain, mut permit2, ctx)
     {
         domain = Domain::new(name_hash: NAME_HASH, version_hash: VERSION_HASH)
+        permit2 = permit2_address
     }
 
-    recv TabMsg {
+    recv PacioliMsg {
         // The tab id is the EIP-712 digest of the authorization, so a signed
-        // authorization opens exactly one tab.
-        Open { payer, merchant, token, limit, open_by, capture_by, nonce, signature } -> u256
-        uses (ctx, mut call, domain, mut terms, mut held, mut log)
-        {
-            if ctx.timestamp() > open_by {
-                revert_error(Expired {})
-            }
-            if limit == 0 {
-                revert_error(ZeroAmount {})
-            }
-            if merchant == Address::zero() {
-                revert_error(NoMerchant {})
-            }
-            let id = domain
-                .digest(
-                    struct_hash: authorization_hash(
-                        payer,
-                        merchant,
-                        token,
-                        limit,
-                        open_by,
-                        capture_by,
-                        nonce,
-                    ),
-                )
+        // authorization opens exactly one tab. The three open handlers differ
+        // only in the funding source they hand to `fund`.
+        Open { auth, signature } -> u256 uses (
+            ctx,
+            mut call,
+            domain,
+            mut terms,
+            mut held,
+            mut log,
+        ) {
+            let id = domain.digest(struct_hash: auth.hash())
+            admit(auth)
             if terms.get(key: id).payer != Address::zero() {
                 revert_error(AlreadyOpen {})
             }
-            if !signature::is_valid_signature_now(payer, digest: id, signature: signature.span()) {
-                revert_error(BadSignature {})
-            }
-
-            terms.set(
-                    key: id,
-                    value: Terms { payer, merchant, token, capture_by },
-                )
-            held.set(key: id, value: limit)
-            erc20::safe_transfer_from(
-                token,
-                owner: payer,
-                receiver: ctx.address(),
-                amount: limit,
-            )
-            log.emit(Opened { id, payer, merchant, token, limit, capture_by })
+            terms.set(key: id, value: terms_of(auth))
+            held.set(key: id, value: auth.limit)
+            fund(Allowance { signature }, auth, id)
+            log.emit(opened(id, auth))
             id
         }
 
+        OpenWithErc3009 { auth, signature } -> u256
+        uses (ctx, mut call, domain, mut terms, mut held, mut log)
+        {
+            let id = domain.digest(struct_hash: auth.hash())
+            admit(auth)
+            if terms.get(key: id).payer != Address::zero() {
+                revert_error(AlreadyOpen {})
+            }
+            terms.set(key: id, value: terms_of(auth))
+            held.set(key: id, value: auth.limit)
+            fund(Erc3009 { signature }, auth, id)
+            log.emit(opened(id, auth))
+            id
+        }
+
+        OpenWithPermit2 { auth, signature } -> u256
+        uses (ctx, mut call, domain, permit2, mut terms, mut held, mut log)
+        {
+            let id = domain.digest(struct_hash: auth.hash())
+            admit(auth)
+            if terms.get(key: id).payer != Address::zero() {
+                revert_error(AlreadyOpen {})
+            }
+            terms.set(key: id, value: terms_of(auth))
+            held.set(key: id, value: auth.limit)
+            fund(Permit2 { permit2, signature }, auth, id)
+            log.emit(opened(id, auth))
+            id
+        }
+
+        // Unmetered tabs only: the merchant's word is the receipt.
         Charge { id, amount } uses (ctx, mut call, terms, mut held, mut charged, mut log) {
             let tab = terms.get(key: id)
             if ctx.caller() != tab.merchant {
                 revert_error(NotMerchant {})
+            }
+            if tab.metered {
+                revert_error(Metered {})
             }
             if ctx.timestamp() > tab.capture_by {
                 revert_error(Expired {})
@@ -231,11 +266,50 @@ pub contract Tab uses (ctx: Ctx, call: mut Call, log: mut Log) {
 
             held.set(key: id, value: available - amount)
             charged.set(key: id, value: charged.get(key: id) + amount)
-            erc20::safe_transfer(token: tab.token, receiver: tab.merchant, amount)
-            log.emit(ChargedTab { id, amount })
+            std::evm::erc20::safe_transfer(token: tab.token, receiver: tab.merchant, amount)
+            log.emit(Charged { id, amount })
         }
 
-        Close { id } uses (ctx, mut call, terms, mut held, mut log) {
+        // Metered tabs: anyone may submit a receipt, the payer's signature
+        // on a running total. The merchant receives the part of `total` it
+        // has not been paid yet, never more.
+        Settle { id, total, signature } uses (
+            ctx,
+            mut call,
+            domain,
+            terms,
+            mut held,
+            mut charged,
+            mut log,
+        ) {
+            let tab = terms.get(key: id)
+            if !tab.metered {
+                revert_error(NotMetered {})
+            }
+            if ctx.timestamp() > tab.capture_by {
+                revert_error(Expired {})
+            }
+            let paid = charged.get(key: id)
+            if total <= paid {
+                revert_error(StaleReceipt {})
+            }
+            let amount = total - paid
+            let available = held.get(key: id)
+            if amount > available {
+                revert_error(ExceedsHeld {})
+            }
+            let digest = domain.digest(struct_hash: receipt_hash(id, total))
+            if !signature::is_valid_signature_now(tab.payer, digest, signature: signature.span()) {
+                revert_error(BadSignature {})
+            }
+
+            held.set(key: id, value: available - amount)
+            charged.set(key: id, value: total)
+            std::evm::erc20::safe_transfer(token: tab.token, receiver: tab.merchant, amount)
+            log.emit(Charged { id, amount })
+        }
+
+        Close { id } uses (ctx, mut call, terms, mut held, mut released, mut log) {
             let tab = terms.get(key: id)
             if ctx.caller() != tab.merchant {
                 revert_error(NotMerchant {})
@@ -246,12 +320,13 @@ pub contract Tab uses (ctx: Ctx, call: mut Call, log: mut Log) {
             }
 
             held.set(key: id, value: 0)
-            erc20::safe_transfer(token: tab.token, receiver: tab.payer, amount)
+            released.set(key: id, value: released.get(key: id) + amount)
+            std::evm::erc20::safe_transfer(token: tab.token, receiver: tab.payer, amount)
             log.emit(Released { id, amount })
         }
 
         // Open to anyone: the funds can only go back to the payer.
-        Reclaim { id } uses (ctx, mut call, terms, mut held, mut log) {
+        Reclaim { id } uses (ctx, mut call, terms, mut held, mut released, mut log) {
             let tab = terms.get(key: id)
             if ctx.timestamp() <= tab.capture_by {
                 revert_error(NotExpired {})
@@ -262,11 +337,13 @@ pub contract Tab uses (ctx: Ctx, call: mut Call, log: mut Log) {
             }
 
             held.set(key: id, value: 0)
-            erc20::safe_transfer(token: tab.token, receiver: tab.payer, amount)
+            released.set(key: id, value: released.get(key: id) + amount)
+            std::evm::erc20::safe_transfer(token: tab.token, receiver: tab.payer, amount)
             log.emit(Released { id, amount })
         }
 
         // Pulls from the merchant, which must have approved this contract.
+        // `held` is not in `uses`: a refund cannot touch the escrow.
         Refund { id, amount } uses (ctx, mut call, terms, charged, mut refunded, mut log) {
             let tab = terms.get(key: id)
             if ctx.caller() != tab.merchant {
@@ -281,51 +358,70 @@ pub contract Tab uses (ctx: Ctx, call: mut Call, log: mut Log) {
             }
 
             refunded.set(key: id, value: done + amount)
-            erc20::safe_transfer_from(
+            std::evm::erc20::safe_transfer_from(
                 token: tab.token,
                 owner: tab.merchant,
                 receiver: tab.payer,
                 amount,
             )
-            log.emit(RefundedTab { id, amount })
+            log.emit(Refunded { id, amount })
         }
 
-        Digest { payer, merchant, token, limit, open_by, capture_by, nonce } -> u256
-        uses (ctx, domain)
-        {
-            domain
-                .digest(
-                    struct_hash: authorization_hash(
-                        payer,
-                        merchant,
-                        token,
-                        limit,
-                        open_by,
-                        capture_by,
-                        nonce,
-                    ),
-                )
+        Digest { auth } -> u256 uses (ctx, domain) {
+            domain.digest(struct_hash: auth.hash())
         }
 
-        // Payer, merchant, token and capture deadline. The payer is the zero
-        // address for an id that was never opened.
-        TermsOf { id } -> (Address, Address, Address, Timestamp)
+        ReceiptDigest { id, total } -> u256 uses (ctx, domain) {
+            domain.digest(struct_hash: receipt_hash(id, total))
+        }
+
+        // Payer, merchant, token, capture deadline and whether the tab is
+        // metered. The payer is the zero address for an id never opened.
+        TermsOf { id } -> (Address, Address, Address, Timestamp, bool)
         uses (terms)
         {
             let tab = terms.get(key: id)
-            (tab.payer, tab.merchant, tab.token, tab.capture_by)
+            (tab.payer, tab.merchant, tab.token, tab.capture_by, tab.metered)
         }
 
-        Held { id } -> u256 uses (held) {
-            held.get(key: id)
+        // The ledger of a tab: limit, held, charged, released, refunded.
+        Accounts { id } -> (u256, u256, u256, u256, u256)
+        uses (terms, held, charged, released, refunded)
+        {
+            (
+                terms.get(key: id).limit,
+                held.get(key: id),
+                charged.get(key: id),
+                released.get(key: id),
+                refunded.get(key: id),
+            )
         }
 
-        Charged { id } -> u256 uses (charged) {
-            charged.get(key: id)
+        Permit2Address -> Address uses (permit2) {
+            permit2
         }
+    }
+}
 
-        Refunded { id } -> u256 uses (refunded) {
-            refunded.get(key: id)
-        }
+fn terms_of(_ auth: Authorization) -> Terms {
+    Terms {
+        payer: auth.payer,
+        merchant: auth.merchant,
+        token: auth.token,
+        limit: auth.limit,
+        capture_by: auth.capture_by,
+        metered: auth.metered,
+    }
+}
+
+fn opened(_ id: u256, _ auth: Authorization) -> Opened {
+    Opened {
+        id,
+        payer: auth.payer,
+        merchant: auth.merchant,
+        token: auth.token,
+        limit: auth.limit,
+        capture_by: auth.capture_by,
+        metered: auth.metered,
     }
 }

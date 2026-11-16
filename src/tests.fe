@@ -1,17 +1,21 @@
 // Run the tests with `fe test`.
 //
 // The test account acts as the merchant. The payer is a contract wallet that
-// approves digests on chain (ERC-1271), so no private key is needed.
+// approves digests on chain (ERC-1271), so no private key is needed. The
+// same wallet signs for all three funding sources and for receipts.
 
 use core::abi::store_word
 use core::option::Option
 use core::ptr::{self, MemBuffer}
-use ingot::{NAME_HASH, Tab, TabMsg, VERSION_HASH, authorization_hash}
-use ingot::demo_token::{DemoToken, TokenMsg}
+use ingot::{PacioliMsg, Pacioli}
+use ingot::authorization::{Authorization, NAME_HASH, VERSION_HASH, receipt_hash}
+use ingot::demo_token::{DemoToken, TokenMsg, receive_hash}
+use ingot::funding::{Permit2Msg, permit2_digest}
 use std::abi::Bytes32
-use std::evm::{eip712, signature}
+use std::evm::{StorageMap, eip712, signature}
+use std::evm::random::{KeccakRng, Rng}
 
-const GAS: u256 = 1_000_000
+const GAS: u256 = 5_000_000
 const LIMIT: u256 = 100
 const MAGIC_WORD: u256 = 0x1626ba7e << 224
 const NEVER: u256 = 0xffffffffffff
@@ -59,32 +63,141 @@ pub contract Wallet uses (call: mut Call) {
 
 msg StrangerMsg {
     #[selector = sol("charge(address,uint256,uint256)")]
-    Charge { tab: Address, id: u256, amount: u256 },
+    Charge { pacioli: Address, id: u256, amount: u256 },
 }
 
 /// Any account other than the merchant.
 pub contract Stranger uses (call: mut Call) {
     recv StrangerMsg {
-        Charge { tab, id, amount } uses (mut call) {
+        Charge { pacioli, id, amount } uses (mut call) {
             call.call(
-                addr: tab,
+                addr: pacioli,
                 gas: GAS,
                 value: Wei::zero(),
-                message: TabMsg::Charge { id, amount },
+                message: PacioliMsg::Charge { id, amount },
             )
         }
     }
 }
 
-struct World { token: Address, tab: Address, wallet: Address }
+msg HollowMsg {
+    #[selector = sol("balanceOf(address)")]
+    BalanceOf { account: Address } -> u256,
+    #[selector = sol("transferFrom(address,address,uint256)")]
+    TransferFrom { from: Address, to: Address, amount: u256 } -> bool,
+}
+
+/// A token that reports success without moving anything.
+pub contract Hollow {
+    recv HollowMsg {
+        BalanceOf { account } -> u256 {
+            let _ = account
+            let none: u256 = 0
+            none
+        }
+
+        TransferFrom { from, to, amount } -> bool {
+            let _ = (from, to, amount)
+            true
+        }
+    }
+}
+
+#[error]
+pub struct PermitExpired {}
+
+#[error]
+pub struct NonceUsed {}
+
+#[error]
+pub struct PermitSignature {}
+
+/// Permit2's `permitWitnessTransferFrom`, enough of it to check that
+/// Pacioli sends what Permit2 expects: the digest is `permit2_digest`, whose
+/// encoding the vector test below pins against Permit2's typed data.
+pub contract MockPermit2 uses (ctx: Ctx, call: mut Call) {
+    mut used: StorageMap<(Address, u256), bool>,
+
+    recv Permit2Msg {
+        PermitWitnessTransferFrom { permit, details, owner, witness, witness_type, signature }
+        uses (ctx, mut call, mut used)
+        {
+            let _ = witness_type
+            if ctx.timestamp().as_seconds() > permit.deadline {
+                revert_error(PermitExpired {})
+            }
+            if used.get(key: (owner, permit.nonce)) {
+                revert_error(NonceUsed {})
+            }
+            let auth_from_witness = witness.val
+            let digest = permit2_witness_digest(
+                chain_id: ctx.chainid(),
+                permit2: ctx.address(),
+                spender: ctx.caller(),
+                token: permit.permitted.token,
+                amount: permit.permitted.amount,
+                nonce: permit.nonce,
+                deadline: permit.deadline,
+                witness: auth_from_witness,
+            )
+            if !signature::is_valid_signature_now(owner, digest, signature: signature.span()) {
+                revert_error(PermitSignature {})
+            }
+            used.set(key: (owner, permit.nonce), value: true)
+            let ok: bool = call
+                .call(
+                    addr: permit.permitted.token,
+                    gas: GAS,
+                    value: Wei::zero(),
+                    message: TokenMsg::TransferFrom {
+                        from: owner,
+                        to: details.to,
+                        amount: details.requested_amount,
+                    },
+                )
+            assert!(ok)
+        }
+    }
+}
+
+/// `permit2_digest` from raw fields, for the mock, which sees only the
+/// witness hash and not the authorization behind it.
+fn permit2_witness_digest(
+    chain_id: u256,
+    permit2: Address,
+    spender: Address,
+    token: Address,
+    amount: u256,
+    nonce: u256,
+    deadline: u256,
+    witness: u256,
+) -> u256 {
+    use std::evm::crypto::keccak_words
+    use ingot::funding::{
+        PERMIT2_DOMAIN_TYPEHASH,
+        PERMIT2_NAME_HASH,
+        PERMIT_WITNESS_TYPEHASH,
+        TOKEN_PERMISSIONS_TYPEHASH,
+    }
+    let separator = keccak_words(
+        [PERMIT2_DOMAIN_TYPEHASH, PERMIT2_NAME_HASH, chain_id, permit2.word()],
+    )
+    let permitted = keccak_words([TOKEN_PERMISSIONS_TYPEHASH, token.word(), amount])
+    let struct_hash = keccak_words(
+        [PERMIT_WITNESS_TYPEHASH, permitted, spender.word(), nonce, deadline, witness],
+    )
+    eip712::digest(domain_separator: separator, struct_hash)
+}
+
+struct World { token: Address, pacioli: Address, wallet: Address, permit2: Address }
 
 impl Copy for World {}
 
-/// Deploys everything and funds the wallet with `LIMIT` tokens, approved for
-/// the tab contract.
+/// Deploys everything and funds the wallet with `LIMIT` tokens.
 fn world() -> World uses (evm: mut Evm) {
     let token = evm.create2<DemoToken>(value: Wei::zero(), args: (), salt: 0)
-    let tab = evm.create2<Tab>(value: Wei::zero(), args: (), salt: 0)
+    let permit2 = evm.create2<MockPermit2>(value: Wei::zero(), args: (), salt: 0)
+    let pacioli = evm.create2<Pacioli>(value: Wei::zero(), args: (permit2,), salt: 0)
     let wallet = evm.create2<Wallet>(value: Wei::zero(), args: (), salt: 0)
     evm.call(
         addr: token,
@@ -92,59 +205,68 @@ fn world() -> World uses (evm: mut Evm) {
         value: Wei::zero(),
         message: TokenMsg::Mint { to: wallet, amount: LIMIT },
     )
-    evm.call(
-        addr: wallet,
-        gas: GAS,
-        value: Wei::zero(),
-        message: WalletMsg::Approve { token, spender: tab, amount: LIMIT },
-    )
-    World { token, tab, wallet }
+    World { token, pacioli, wallet, permit2 }
 }
 
-/// Has the wallet sign an authorization for `signed_limit`, then opens a tab
-/// for `limit` with the test account as merchant.
-fn open(w: World, signed_limit: u256, limit: u256, capture_by: u256) -> u256
-uses (evm: mut Evm)
-{
-    let merchant = evm.address()
-    let open_by = Timestamp::from_seconds(NEVER)
-    let capture_by = Timestamp::from_seconds(capture_by)
-    let digest: u256 = evm
-        .call(
-            addr: w.tab,
-            gas: GAS,
-            value: Wei::zero(),
-            message: TabMsg::Digest {
-                payer: w.wallet,
-                merchant,
-                token: w.token,
-                limit: signed_limit,
-                open_by,
-                capture_by,
-                nonce: 1,
-            },
-        )
+fn approve(w: World, spender: Address, amount: u256) uses (evm: mut Evm) {
+    evm.call(
+        addr: w.wallet,
+        gas: GAS,
+        value: Wei::zero(),
+        message: WalletMsg::Approve { token: w.token, spender, amount },
+    )
+}
+
+fn sign(w: World, digest: u256) uses (evm: mut Evm) {
     evm.call(
         addr: w.wallet,
         gas: GAS,
         value: Wei::zero(),
         message: WalletMsg::Sign { digest },
     )
+}
+
+fn terms(w: World, limit: u256, capture_by: u256, metered: bool) -> Authorization
+uses (evm: Evm)
+{
+    Authorization {
+        payer: w.wallet,
+        merchant: evm.address(),
+        token: w.token,
+        limit,
+        open_by: Timestamp::from_seconds(NEVER),
+        capture_by: Timestamp::from_seconds(capture_by),
+        metered,
+        nonce: 1,
+    }
+}
+
+fn digest(w: World, auth: Authorization) -> u256 uses (evm: mut Evm) {
     evm.call(
-        addr: w.tab,
+        addr: w.pacioli,
         gas: GAS,
         value: Wei::zero(),
-        message: TabMsg::Open {
-            payer: w.wallet,
-            merchant,
-            token: w.token,
-            limit,
-            open_by,
-            capture_by,
-            nonce: 1,
-            signature: Bytes::empty(),
-        },
+        message: PacioliMsg::Digest { auth },
     )
+}
+
+/// Approves the escrow, has the wallet sign `signed`, and opens `auth`.
+fn open_signed(w: World, signed: Authorization, auth: Authorization) -> u256
+uses (evm: mut Evm)
+{
+    approve(w, spender: w.pacioli, amount: auth.limit)
+    sign(w, digest: digest(w, auth: signed))
+    evm.call(
+        addr: w.pacioli,
+        gas: GAS,
+        value: Wei::zero(),
+        message: PacioliMsg::Open { auth, signature: Bytes::empty() },
+    )
+}
+
+fn open(w: World, capture_by: u256, metered: bool) -> u256 uses (evm: mut Evm) {
+    let auth = terms(w, limit: LIMIT, capture_by, metered)
+    open_signed(w, signed: auth, auth)
 }
 
 fn balance(w: World, account: Address) -> u256 uses (evm: mut Evm) {
@@ -156,121 +278,293 @@ fn balance(w: World, account: Address) -> u256 uses (evm: mut Evm) {
     )
 }
 
-fn held(w: World, id: u256) -> u256 uses (evm: mut Evm) {
+fn accounts(w: World, id: u256) -> (u256, u256, u256, u256, u256)
+uses (evm: mut Evm)
+{
     evm.call(
-        addr: w.tab,
+        addr: w.pacioli,
         gas: GAS,
         value: Wei::zero(),
-        message: TabMsg::Held { id },
+        message: PacioliMsg::Accounts { id },
     )
+}
+
+fn held(w: World, id: u256) -> u256 uses (evm: mut Evm) {
+    accounts(w, id).1
 }
 
 fn charge(w: World, id: u256, amount: u256) uses (evm: mut Evm) {
     evm.call(
-        addr: w.tab,
+        addr: w.pacioli,
         gas: GAS,
         value: Wei::zero(),
-        message: TabMsg::Charge { id, amount },
+        message: PacioliMsg::Charge { id, amount },
     )
 }
 
-#[test]
-fn open_moves_the_limit_into_escrow() uses (evm: mut Evm) {
-    let w = world()
-    let id = open(w, signed_limit: LIMIT, limit: LIMIT, capture_by: NEVER)
-    assert!(held(w, id) == LIMIT)
-    assert!(balance(w, account: w.tab) == LIMIT)
-    assert!(balance(w, account: w.wallet) == 0)
-
-    let terms: (Address, Address, Address, Timestamp) = evm
-        .call(
-            addr: w.tab,
-            gas: GAS,
-            value: Wei::zero(),
-            message: TabMsg::TermsOf { id },
-        )
-    assert!(terms.0 == w.wallet)
-    assert!(terms.1 == evm.address())
-    assert!(terms.2 == w.token)
-    assert!(terms.3 == Timestamp::from_seconds(NEVER))
-}
-
-#[test]
-fn charge_in_parts_then_close() uses (evm: mut Evm) {
-    let w = world()
-    let id = open(w, signed_limit: LIMIT, limit: LIMIT, capture_by: NEVER)
-
-    charge(w, id, amount: 30)
-    charge(w, id, amount: 20)
-    assert!(balance(w, account: evm.address()) == 50)
-    assert!(held(w, id) == 50)
-
+fn close(w: World, id: u256) uses (evm: mut Evm) {
     evm.call(
-        addr: w.tab,
+        addr: w.pacioli,
         gas: GAS,
         value: Wei::zero(),
-        message: TabMsg::Close { id },
+        message: PacioliMsg::Close { id },
     )
-    assert!(held(w, id) == 0)
-    assert!(balance(w, account: w.wallet) == 50)
-    assert!(balance(w, account: w.tab) == 0)
 }
 
-#[test]
-fn refund_returns_charged_funds() uses (evm: mut Evm) {
-    let w = world()
-    let id = open(w, signed_limit: LIMIT, limit: LIMIT, capture_by: NEVER)
-    charge(w, id, amount: 60)
-
+fn refund(w: World, id: u256, amount: u256) uses (evm: mut Evm) {
     let _: bool = evm
         .call(
             addr: w.token,
             gas: GAS,
             value: Wei::zero(),
-            message: TokenMsg::Approve { spender: w.tab, amount: 25 },
+            message: TokenMsg::Approve { spender: w.pacioli, amount },
         )
     evm.call(
-        addr: w.tab,
+        addr: w.pacioli,
         gas: GAS,
         value: Wei::zero(),
-        message: TabMsg::Refund { id, amount: 25 },
+        message: PacioliMsg::Refund { id, amount },
     )
-    assert!(balance(w, account: w.wallet) == 25)
-    assert!(balance(w, account: evm.address()) == 35)
-    let refunded: u256 = evm
+}
+
+/// Has the wallet sign a receipt for `total` and submits it.
+fn settle(w: World, id: u256, total: u256) uses (evm: mut Evm) {
+    let digest: u256 = evm
         .call(
-            addr: w.tab,
+            addr: w.pacioli,
             gas: GAS,
             value: Wei::zero(),
-            message: TabMsg::Refunded { id },
+            message: PacioliMsg::ReceiptDigest { id, total },
         )
-    assert!(refunded == 25)
+    sign(w, digest)
+    evm.call(
+        addr: w.pacioli,
+        gas: GAS,
+        value: Wei::zero(),
+        message: PacioliMsg::Settle { id, total, signature: Bytes::empty() },
+    )
+}
+
+/// The double-entry rule, and the token balances that must match it.
+fn assert_books(w: World, id: u256) uses (evm: mut Evm) {
+    let (limit, held, charged, released, refunded) = accounts(w, id)
+    assert!(held + charged + released == limit)
+    assert!(refunded <= charged)
+    assert!(balance(w, account: w.pacioli) == held)
+    assert!(
+        balance(w, account: w.wallet) + limit == LIMIT + released + refunded,
+    )
+    assert!(balance(w, account: evm.address()) == charged - refunded)
+}
+
+// ---------------------------------------------------------------------------
+// Funding sources
+
+#[test]
+fn open_moves_the_limit_into_escrow() uses (evm: mut Evm) {
+    let w = world()
+    let id = open(w, capture_by: NEVER, metered: false)
+    assert!(held(w, id) == LIMIT)
+    assert!(balance(w, account: w.pacioli) == LIMIT)
+    assert!(balance(w, account: w.wallet) == 0)
+
+    let t: (Address, Address, Address, Timestamp, bool) = evm
+        .call(
+            addr: w.pacioli,
+            gas: GAS,
+            value: Wei::zero(),
+            message: PacioliMsg::TermsOf { id },
+        )
+    assert!(t.0 == w.wallet)
+    assert!(t.1 == evm.address())
+    assert!(t.2 == w.token)
+    assert!(t.3 == Timestamp::from_seconds(NEVER))
+    assert!(!t.4)
+    assert_books(w, id)
+}
+
+#[test]
+fn open_with_erc3009_needs_no_approval() uses (evm: mut Evm) {
+    let w = world()
+    let auth = terms(w, limit: LIMIT, capture_by: NEVER, metered: false)
+    let id = digest(w, auth)
+    let separator: u256 = evm
+        .call(
+            addr: w.token,
+            gas: GAS,
+            value: Wei::zero(),
+            message: TokenMsg::DomainSeparator {},
+        )
+    sign(
+        w,
+        digest: eip712::digest(
+            domain_separator: separator,
+            struct_hash: receive_hash(
+                from: w.wallet,
+                to: w.pacioli,
+                value: LIMIT,
+                valid_after: 0,
+                valid_before: NEVER,
+                nonce: id,
+            ),
+        ),
+    )
+    let opened: u256 = evm
+        .call(
+            addr: w.pacioli,
+            gas: GAS,
+            value: Wei::zero(),
+            message: PacioliMsg::OpenWithErc3009 { auth, signature: Bytes::empty() },
+        )
+    assert!(opened == id)
+    assert!(held(w, id) == LIMIT)
+    let spent: bool = evm
+        .call(
+            addr: w.token,
+            gas: GAS,
+            value: Wei::zero(),
+            message: TokenMsg::AuthorizationState {
+                authorizer: w.wallet,
+                nonce: Bytes32 { val: id },
+            },
+        )
+    assert!(spent)
+    assert_books(w, id)
+}
+
+#[test]
+fn open_with_permit2_witness() uses (evm: mut Evm) {
+    let w = world()
+    approve(w, spender: w.permit2, amount: LIMIT)
+    let auth = terms(w, limit: LIMIT, capture_by: NEVER, metered: true)
+    sign(
+        w,
+        digest: permit2_digest(
+            chain_id: evm.chainid(),
+            permit2: w.permit2,
+            spender: w.pacioli,
+            auth,
+        ),
+    )
+    let id: u256 = evm
+        .call(
+            addr: w.pacioli,
+            gas: GAS,
+            value: Wei::zero(),
+            message: PacioliMsg::OpenWithPermit2 { auth, signature: Bytes::empty() },
+        )
+    assert!(id == digest(w, auth))
+    assert!(held(w, id) == LIMIT)
+    assert_books(w, id)
+}
+
+// The wallet signed a Permit2 transfer for different terms: the witness no
+// longer matches, so Permit2 rejects it.
+// cast sig "PermitSignature()"
+#[test(should_revert, selector = 0x50631db7)]
+fn permit2_rejects_changed_terms() uses (evm: mut Evm) {
+    let w = world()
+    approve(w, spender: w.permit2, amount: LIMIT)
+    let signed = terms(w, limit: LIMIT, capture_by: NEVER, metered: true)
+    sign(
+        w,
+        digest: permit2_digest(
+            chain_id: evm.chainid(),
+            permit2: w.permit2,
+            spender: w.pacioli,
+            auth: signed,
+        ),
+    )
+    let auth = terms(w, limit: LIMIT, capture_by: NEVER, metered: false)
+    let _: u256 = evm
+        .call(
+            addr: w.pacioli,
+            gas: GAS,
+            value: Wei::zero(),
+            message: PacioliMsg::OpenWithPermit2 { auth, signature: Bytes::empty() },
+        )
+}
+
+// The token reports success but moves nothing.
+// cast sig "ShortFunding()"
+#[test(should_revert, selector = 0x4a8f0e82)]
+fn hollow_funding_reverts() uses (evm: mut Evm) {
+    let w = world()
+    let hollow = evm.create2<Hollow>(value: Wei::zero(), args: (), salt: 0)
+    let auth = Authorization {
+        payer: w.wallet,
+        merchant: evm.address(),
+        token: hollow,
+        limit: LIMIT,
+        open_by: Timestamp::from_seconds(NEVER),
+        capture_by: Timestamp::from_seconds(NEVER),
+        metered: false,
+        nonce: 1,
+    }
+    sign(w, digest: digest(w, auth))
+    let _: u256 = evm
+        .call(
+            addr: w.pacioli,
+            gas: GAS,
+            value: Wei::zero(),
+            message: PacioliMsg::Open { auth, signature: Bytes::empty() },
+        )
+}
+
+// ---------------------------------------------------------------------------
+// Unmetered tabs
+
+#[test]
+fn charge_in_parts_then_close() uses (evm: mut Evm) {
+    let w = world()
+    let id = open(w, capture_by: NEVER, metered: false)
+    charge(w, id, amount: 30)
+    charge(w, id, amount: 20)
+    assert!(balance(w, account: evm.address()) == 50)
+    assert!(held(w, id) == 50)
+    close(w, id)
+    assert!(held(w, id) == 0)
+    assert!(balance(w, account: w.wallet) == 50)
+    assert_books(w, id)
+}
+
+#[test]
+fn refund_returns_charged_funds() uses (evm: mut Evm) {
+    let w = world()
+    let id = open(w, capture_by: NEVER, metered: false)
+    charge(w, id, amount: 60)
+    refund(w, id, amount: 25)
+    assert!(balance(w, account: w.wallet) == 25)
+    assert!(balance(w, account: evm.address()) == 35)
+    assert!(accounts(w, id).4 == 25)
+    assert_books(w, id)
 }
 
 #[test]
 fn reclaim_after_the_capture_window() uses (evm: mut Evm) {
     let w = world()
-    let id = open(w, signed_limit: LIMIT, limit: LIMIT, capture_by: 0)
+    let id = open(w, capture_by: 0, metered: false)
     evm.call(
-        addr: w.tab,
+        addr: w.pacioli,
         gas: GAS,
         value: Wei::zero(),
-        message: TabMsg::Reclaim { id },
+        message: PacioliMsg::Reclaim { id },
     )
     assert!(balance(w, account: w.wallet) == LIMIT)
-    assert!(held(w, id) == 0)
+    assert!(accounts(w, id).3 == LIMIT)
+    assert_books(w, id)
 }
 
 // cast sig "NotExpired()"
 #[test(should_revert, selector = 0xd0404f85)]
 fn reclaim_inside_the_capture_window_reverts() uses (evm: mut Evm) {
     let w = world()
-    let id = open(w, signed_limit: LIMIT, limit: LIMIT, capture_by: NEVER)
+    let id = open(w, capture_by: NEVER, metered: false)
     evm.call(
-        addr: w.tab,
+        addr: w.pacioli,
         gas: GAS,
         value: Wei::zero(),
-        message: TabMsg::Reclaim { id },
+        message: PacioliMsg::Reclaim { id },
     )
 }
 
@@ -278,7 +572,7 @@ fn reclaim_inside_the_capture_window_reverts() uses (evm: mut Evm) {
 #[test(should_revert, selector = 0x203d82d8)]
 fn charge_after_the_capture_window_reverts() uses (evm: mut Evm) {
     let w = world()
-    let id = open(w, signed_limit: LIMIT, limit: LIMIT, capture_by: 0)
+    let id = open(w, capture_by: 0, metered: false)
     charge(w, id, amount: 1)
 }
 
@@ -286,7 +580,7 @@ fn charge_after_the_capture_window_reverts() uses (evm: mut Evm) {
 #[test(should_revert, selector = 0x4d0b7d02)]
 fn charge_above_the_held_amount_reverts() uses (evm: mut Evm) {
     let w = world()
-    let id = open(w, signed_limit: LIMIT, limit: LIMIT, capture_by: NEVER)
+    let id = open(w, capture_by: NEVER, metered: false)
     charge(w, id, amount: 70)
     charge(w, id, amount: 31)
 }
@@ -295,8 +589,8 @@ fn charge_above_the_held_amount_reverts() uses (evm: mut Evm) {
 #[test(should_revert, selector = 0x965f8d94)]
 fn opening_the_same_authorization_twice_reverts() uses (evm: mut Evm) {
     let w = world()
-    let _ = open(w, signed_limit: LIMIT, limit: LIMIT, capture_by: NEVER)
-    let _ = open(w, signed_limit: LIMIT, limit: LIMIT, capture_by: NEVER)
+    let _ = open(w, capture_by: NEVER, metered: false)
+    let _ = open(w, capture_by: NEVER, metered: false)
 }
 
 // The wallet signed for 50, the merchant asks for 100.
@@ -304,20 +598,22 @@ fn opening_the_same_authorization_twice_reverts() uses (evm: mut Evm) {
 #[test(should_revert, selector = 0x5cd5d233)]
 fn opening_with_changed_terms_reverts() uses (evm: mut Evm) {
     let w = world()
-    let _ = open(w, signed_limit: 50, limit: LIMIT, capture_by: NEVER)
+    let auth = terms(w, limit: LIMIT, capture_by: NEVER, metered: false)
+    let signed = terms(w, limit: 50, capture_by: NEVER, metered: false)
+    let _ = open_signed(w, signed, auth)
 }
 
 // cast sig "NotMerchant()"
 #[test(should_revert, selector = 0x3b6405f4)]
 fn stranger_cannot_charge() uses (evm: mut Evm) {
     let w = world()
-    let id = open(w, signed_limit: LIMIT, limit: LIMIT, capture_by: NEVER)
+    let id = open(w, capture_by: NEVER, metered: false)
     let stranger = evm.create2<Stranger>(value: Wei::zero(), args: (), salt: 0)
     evm.call(
         addr: stranger,
         gas: GAS,
         value: Wei::zero(),
-        message: StrangerMsg::Charge { tab: w.tab, id, amount: 1 },
+        message: StrangerMsg::Charge { pacioli: w.pacioli, id, amount: 1 },
     )
 }
 
@@ -325,61 +621,212 @@ fn stranger_cannot_charge() uses (evm: mut Evm) {
 #[test(should_revert, selector = 0xaddddaa3)]
 fn refund_above_the_charged_amount_reverts() uses (evm: mut Evm) {
     let w = world()
-    let id = open(w, signed_limit: LIMIT, limit: LIMIT, capture_by: NEVER)
+    let id = open(w, capture_by: NEVER, metered: false)
     charge(w, id, amount: 10)
+    refund(w, id, amount: 11)
+}
+
+// ---------------------------------------------------------------------------
+// Metered tabs
+
+#[test]
+fn metered_tab_charges_signed_totals() uses (evm: mut Evm) {
+    let w = world()
+    let id = open(w, capture_by: NEVER, metered: true)
+    settle(w, id, total: 12)
+    settle(w, id, total: 40)
+    assert!(balance(w, account: evm.address()) == 40)
+    assert!(held(w, id) == 60)
+    close(w, id)
+    assert!(balance(w, account: w.wallet) == 60)
+    assert_books(w, id)
+}
+
+// cast sig "Metered()"
+#[test(should_revert, selector = 0x324e8145)]
+fn metered_tab_rejects_unsigned_charges() uses (evm: mut Evm) {
+    let w = world()
+    let id = open(w, capture_by: NEVER, metered: true)
+    charge(w, id, amount: 1)
+}
+
+// cast sig "StaleReceipt()"
+#[test(should_revert, selector = 0x07ab6ca1)]
+fn an_old_receipt_cannot_be_replayed() uses (evm: mut Evm) {
+    let w = world()
+    let id = open(w, capture_by: NEVER, metered: true)
+    settle(w, id, total: 30)
+    settle(w, id, total: 30)
+}
+
+// The merchant submits a total the payer never signed.
+// cast sig "BadSignature()"
+#[test(should_revert, selector = 0x5cd5d233)]
+fn an_unsigned_receipt_reverts() uses (evm: mut Evm) {
+    let w = world()
+    let id = open(w, capture_by: NEVER, metered: true)
     evm.call(
-        addr: w.tab,
+        addr: w.pacioli,
         gas: GAS,
         value: Wei::zero(),
-        message: TabMsg::Refund { id, amount: 11 },
+        message: PacioliMsg::Settle { id, total: 50, signature: Bytes::empty() },
     )
 }
 
-// Anvil account 0 signs the typed data below with
-// `cast wallet sign --data`; the hashes come from `cast keccak` over
-// `cast abi-encode`, independent of this implementation.
+// cast sig "ExceedsHeld()"
+#[test(should_revert, selector = 0x4d0b7d02)]
+fn a_receipt_above_the_limit_reverts() uses (evm: mut Evm) {
+    let w = world()
+    let id = open(w, capture_by: NEVER, metered: true)
+    settle(w, id, total: LIMIT + 1)
+}
+
+// cast sig "NotMetered()"
+#[test(should_revert, selector = 0xcb514bab)]
+fn receipts_only_settle_metered_tabs() uses (evm: mut Evm) {
+    let w = world()
+    let id = open(w, capture_by: NEVER, metered: false)
+    settle(w, id, total: 10)
+}
+
+// ---------------------------------------------------------------------------
+// Invariants
 //
-//   domain:  Tab, version 1, chain 31337, verifying contract 0xdddd...dddd
-//   message: payer anvil 0, merchant anvil 1, token 0xcccc...cccc,
-//            limit 100, openBy 2000000000, captureBy 2000003600, nonce 1
-const PAYER: u256 = 0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266
-const STRUCT_HASH: u256 = 0xa95e22e4e94ede262846c68139cbfc0b92146ccc51635cadd9d816223f0b0047
-const DIGEST: u256 = 0x6a28aa36cd2f9d081439beb4bfc588be774d515b530349f9d28bb928a2219d38
-const SIG_R: u256 = 0x53941482bff2d9088cc19021b6be44787bd817ee856422b470fb5c44f9e4a192
-const SIG_S: u256 = 0x46aea031820deb48dde96a5b98a63482c5139a54d019e2e1d9105aef7d679f54
+// Random sequences of charges, receipts and refunds, with the books checked
+// after every step. The seed is fixed, so a failure replays exactly.
+
+const STEPS: u256 = 24
 
 #[test]
-fn authorization_matches_wallet_typed_data() {
-    let struct_hash = authorization_hash(
+fn books_balance_through_random_charges_and_refunds() uses (evm: mut Evm) {
+    let w = world()
+    let id = open(w, capture_by: NEVER, metered: false)
+    var rng = KeccakRng::seeded(0xbeef)
+    var step: u256 = 0
+    while step < STEPS {
+        let (_, held, charged, _, refunded) = accounts(w, id)
+        if rng.uniform(3) < 2 {
+            if held > 0 {
+                charge(w, id, amount: 1 + rng.uniform(held))
+            }
+        } else if charged > refunded {
+            refund(w, id, amount: 1 + rng.uniform(charged - refunded))
+        }
+        assert_books(w, id)
+        step += 1
+    }
+    if held(w, id) > 0 {
+        close(w, id)
+    }
+    assert_books(w, id)
+    assert!(balance(w, account: w.pacioli) == 0)
+}
+
+#[test]
+fn books_balance_through_random_receipts() uses (evm: mut Evm) {
+    let w = world()
+    let id = open(w, capture_by: NEVER, metered: true)
+    var rng = KeccakRng::seeded(0xfeed)
+    var step: u256 = 0
+    while step < STEPS {
+        let (_, held, charged, _, _) = accounts(w, id)
+        if held > 0 {
+            settle(w, id, total: charged + 1 + rng.uniform(held))
+        }
+        assert_books(w, id)
+        step += 1
+    }
+    assert!(accounts(w, id).2 == LIMIT)
+    assert_books(w, id)
+}
+
+// ---------------------------------------------------------------------------
+// Typed-data vectors
+//
+// viem computes these from the typed data in `web/src/pacioli.ts`
+// (`node web/scripts/vectors.ts`), independent of this implementation; Anvil
+// account 0 signs. `cast wallet sign --data` gives the same signature, and
+// `cast keccak` over `cast abi-encode` the same struct hash.
+//
+//   domain:  Pacioli, version 1, chain 31337, verifying contract 0xdddd...dddd
+//   message: payer anvil 0, merchant anvil 1, token 0xcccc...cccc,
+//            limit 100, openBy 2000000000, captureBy 2000003600,
+//            metered true, nonce 1
+
+const PAYER: u256 = 0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266
+const VECTOR_STRUCT_HASH: u256 = 0x715892ffed22337f774afdc509341d326e04379a70d56674daf2c10d44dce571
+const VECTOR_DIGEST: u256 = 0x498fc170b5e91c841f4633a53cefc3d140448b1f9f002f9599251b212710a4d6
+const VECTOR_SIG_R: u256 = 0x79642722dfdfc835193b6f211fcf28953c695a75ede3d1a64bcebbd1d18b813e
+const VECTOR_SIG_S: u256 = 0x2637d32f4ac7084e05daddd05e73191da8249b37976aefec345acddc0ef0acde
+const VECTOR_SIG_V: u8 = 27
+const VECTOR_RECEIPT_DIGEST: u256 = 0xea154639de0e1e4ab8e2951058db6dc6155d43f72e6480e3c79e24494b790f1a
+const VECTOR_PERMIT2_DIGEST: u256 = 0x857d0889655df0b1ee1e29a8391f9b5f500d8c0fce8fb3b0718ee0a6811cb5c7
+
+fn vector_auth() -> Authorization {
+    Authorization {
         payer: Address::new(PAYER),
         merchant: Address::new(0x70997970c51812dc3a010c7d01b50e0d17dc79c8),
         token: Address::new(0xcccccccccccccccccccccccccccccccccccccccc),
         limit: 100,
         open_by: Timestamp::from_seconds(2000000000),
         capture_by: Timestamp::from_seconds(2000003600),
+        metered: true,
         nonce: 1,
-    )
-    assert!(struct_hash == STRUCT_HASH)
+    }
+}
 
-    let digest = eip712::digest(
-        domain_separator: eip712::domain_separator(
-            name_hash: NAME_HASH,
-            version_hash: VERSION_HASH,
-            chain_id: 31337,
-            verifying_contract: Address::new(0xdddddddddddddddddddddddddddddddddddddddd),
-        ),
-        struct_hash,
+fn vector_separator() -> u256 {
+    eip712::domain_separator(
+        name_hash: NAME_HASH,
+        version_hash: VERSION_HASH,
+        chain_id: 31337,
+        verifying_contract: Address::new(0xdddddddddddddddddddddddddddddddddddddddd),
     )
-    assert!(digest == DIGEST)
+}
+
+#[test]
+fn authorization_matches_wallet_typed_data() {
+    let auth = vector_auth()
+    assert!(auth.hash() == VECTOR_STRUCT_HASH)
+    let digest = eip712::digest(
+        domain_separator: vector_separator(),
+        struct_hash: auth.hash(),
+    )
+    assert!(digest == VECTOR_DIGEST)
 
     let sig = MemBuffer::new(65)
     unsafe {
-        store_word(ptr: sig.ptr(), value: SIG_R)
-        store_word(ptr: ptr::offset_bytes(sig.ptr(), 32), value: SIG_S)
-        *ptr::offset_bytes(sig.ptr(), 64) = 27
+        store_word(ptr: sig.ptr(), value: VECTOR_SIG_R)
+        store_word(ptr: ptr::offset_bytes(sig.ptr(), 32), value: VECTOR_SIG_S)
+        *ptr::offset_bytes(sig.ptr(), 64) = VECTOR_SIG_V
     }
     match signature::recover(digest, sig.span()) {
         Option::Some(signer) => assert!(signer.word() == PAYER),
         Option::None => assert!(false),
     }
+}
+
+#[test]
+fn receipt_matches_wallet_typed_data() {
+    let id = eip712::digest(
+        domain_separator: vector_separator(),
+        struct_hash: vector_auth().hash(),
+    )
+    let digest = eip712::digest(
+        domain_separator: vector_separator(),
+        struct_hash: receipt_hash(id, total: 42),
+    )
+    assert!(digest == VECTOR_RECEIPT_DIGEST)
+}
+
+// Permit2 at its canonical address on chain 31337, spender 0xdddd...dddd.
+#[test]
+fn permit2_digest_matches_permit2_typed_data() {
+    let digest = permit2_digest(
+        chain_id: 31337,
+        permit2: Address::new(0x000000000022d473030f116ddee9f6b43ac78ba3),
+        spender: Address::new(0xdddddddddddddddddddddddddddddddddddddddd),
+        auth: vector_auth(),
+    )
+    assert!(digest == VECTOR_PERMIT2_DIGEST)
 }

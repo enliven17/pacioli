@@ -1,0 +1,191 @@
+// How the authorized limit reaches the escrow.
+//
+// Every source proves the payer agreed to the tab and moves the limit in one
+// step, so `Pacioli` opens a tab the same way whichever source pays for it.
+
+use ingot::authorization::Authorization
+use std::abi::{Bytes32, Text}
+use core::keccak
+use std::evm::{erc20, signature}
+use std::evm::crypto::keccak_words
+
+/// Canonical Permit2 deployment, the same address on every chain.
+pub const PERMIT2: u256 = 0x000000000022d473030f116ddee9f6b43ac78ba3
+
+#[error]
+pub struct BadSignature {}
+
+/// A source of funds for a tab.
+pub trait Funding {
+    /// Moves `auth.limit` of `auth.token` from the payer to `escrow`. Reverts
+    /// unless the payer agreed to the tab `id` that `auth` describes.
+    fn collect(self, auth: Authorization, id: u256, escrow: Address)
+    uses (ctx: Ctx, call: mut Call)
+}
+
+/// The payer approved the escrow in advance and signed the tab digest, as an
+/// EOA or an ERC-1271 wallet.
+pub struct Allowance { pub signature: Bytes }
+
+impl Funding for Allowance {
+    fn collect(self, auth: Authorization, id: u256, escrow: Address)
+    uses (ctx: Ctx, call: mut Call)
+    {
+        if !signature::is_valid_signature_now(
+            auth.payer,
+            digest: id,
+            signature: self.signature.span(),
+        ) {
+            revert_error(BadSignature {})
+        }
+        erc20::safe_transfer_from(
+            token: auth.token,
+            owner: auth.payer,
+            receiver: escrow,
+            amount: auth.limit,
+        )
+    }
+}
+
+pub msg Erc3009Msg {
+    #[selector = sol(
+        "receiveWithAuthorization(address,address,uint256,uint256,uint256,bytes32,bytes)",
+    )]
+    ReceiveWithAuthorization {
+        from: Address,
+        to: Address,
+        value: u256,
+        valid_after: u256,
+        valid_before: u256,
+        nonce: Bytes32,
+        signature: Bytes,
+    },
+}
+
+/// The payer signed an ERC-3009 `ReceiveWithAuthorization` whose nonce is
+/// the tab digest. The token checks the signature, and the nonce binds it
+/// to these exact terms, so no approval and no second signature are needed.
+pub struct Erc3009 { pub signature: Bytes }
+
+impl Funding for Erc3009 {
+    fn collect(self, auth: Authorization, id: u256, escrow: Address)
+    uses (ctx: Ctx, call: mut Call)
+    {
+        auth.token
+            .call(
+                Erc3009Msg::ReceiveWithAuthorization {
+                    from: auth.payer,
+                    to: escrow,
+                    value: auth.limit,
+                    valid_after: 0,
+                    valid_before: auth.open_by.as_seconds(),
+                    nonce: Bytes32 { val: id },
+                    signature: self.signature.clone(),
+                },
+            )
+    }
+}
+
+/// Permit2 `ISignatureTransfer.TokenPermissions`.
+#[abi]
+pub struct TokenPermissions { pub token: Address, pub amount: u256 }
+
+/// Permit2 `ISignatureTransfer.PermitTransferFrom`.
+#[abi]
+pub struct PermitTransferFrom {
+    pub permitted: TokenPermissions,
+    pub nonce: u256,
+    pub deadline: u256,
+}
+
+/// Permit2 `ISignatureTransfer.SignatureTransferDetails`.
+#[abi]
+pub struct SignatureTransferDetails { pub to: Address, pub requested_amount: u256 }
+
+/// The Permit2 witness type string for an authorization.
+pub const WITNESS_TYPE: Text = "Authorization witness)Authorization(address payer,address merchant,address token,uint256 limit,uint256 openBy,uint256 captureBy,bool metered,uint256 nonce)TokenPermissions(address token,uint256 amount)"
+
+pub const PERMIT2_NAME_HASH: u256 = keccak("Permit2")
+
+pub const PERMIT2_DOMAIN_TYPEHASH: u256 = keccak(
+    "EIP712Domain(string name,uint256 chainId,address verifyingContract)",
+)
+
+pub const TOKEN_PERMISSIONS_TYPEHASH: u256 = keccak(
+    "TokenPermissions(address token,uint256 amount)",
+)
+
+/// `PermitWitnessTransferFrom` with `WITNESS_TYPE` appended, as Permit2
+/// builds it from the stub and the witness type string.
+pub const PERMIT_WITNESS_TYPEHASH: u256 = keccak(
+    "PermitWitnessTransferFrom(TokenPermissions permitted,address spender,uint256 nonce,uint256 deadline,Authorization witness)Authorization(address payer,address merchant,address token,uint256 limit,uint256 openBy,uint256 captureBy,bool metered,uint256 nonce)TokenPermissions(address token,uint256 amount)",
+)
+
+/// The digest a payer signs for `openWithPermit2`: Permit2's domain over a
+/// `PermitWitnessTransferFrom` whose witness is the authorization. The
+/// spender is the Pacioli escrow.
+pub fn permit2_digest(
+    chain_id: u256,
+    permit2: Address,
+    spender: Address,
+    auth: Authorization,
+) -> u256 {
+    let separator = keccak_words(
+        [PERMIT2_DOMAIN_TYPEHASH, PERMIT2_NAME_HASH, chain_id, permit2.word()],
+    )
+    let permitted = keccak_words(
+        [TOKEN_PERMISSIONS_TYPEHASH, auth.token.word(), auth.limit],
+    )
+    let struct_hash = keccak_words(
+        [
+            PERMIT_WITNESS_TYPEHASH,
+            permitted,
+            spender.word(),
+            auth.nonce,
+            auth.open_by.as_seconds(),
+            auth.hash(),
+        ],
+    )
+    std::evm::eip712::digest(domain_separator: separator, struct_hash)
+}
+
+pub msg Permit2Msg {
+    #[selector = sol(
+        "permitWitnessTransferFrom(((address,uint256),uint256,uint256),(address,uint256),address,bytes32,string,bytes)",
+    )]
+    PermitWitnessTransferFrom {
+        permit: PermitTransferFrom,
+        details: SignatureTransferDetails,
+        owner: Address,
+        witness: Bytes32,
+        witness_type: Text,
+        signature: Bytes,
+    },
+}
+
+/// The payer signed a Permit2 `PermitWitnessTransferFrom` with the
+/// authorization as its witness. Permit2 checks the signature and spends the
+/// nonce, so one signature both approves the transfer and states the terms.
+pub struct Permit2 { pub permit2: Address, pub signature: Bytes }
+
+impl Funding for Permit2 {
+    fn collect(self, auth: Authorization, id: u256, escrow: Address)
+    uses (ctx: Ctx, call: mut Call)
+    {
+        self.permit2
+            .call(
+                Permit2Msg::PermitWitnessTransferFrom {
+                    permit: PermitTransferFrom {
+                        permitted: TokenPermissions { token: auth.token, amount: auth.limit },
+                        nonce: auth.nonce,
+                        deadline: auth.open_by.as_seconds(),
+                    },
+                    details: SignatureTransferDetails { to: escrow, requested_amount: auth.limit },
+                    owner: auth.payer,
+                    witness: Bytes32 { val: auth.hash() },
+                    witness_type: WITNESS_TYPE,
+                    signature: self.signature.clone(),
+                },
+            )
+    }
+}
